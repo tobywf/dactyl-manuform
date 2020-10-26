@@ -2,12 +2,12 @@
     (:refer-clojure :exclude [use import])
     (:require [clojure.core.matrix :refer [array matrix mmul]]
               [scad-clj.scad :refer :all]
-              [scad-clj.model :refer :all]
-              [unicode-math.core :refer :all]))
+              [scad-clj.model :refer :all]))
 
 
+(def π pi)
 (defn deg2rad [degrees]
-  (* (/ degrees 180) pi))
+  (* (/ degrees 180) π))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; Shape parameters ;;
