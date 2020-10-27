@@ -17,18 +17,18 @@
 ; the switch hole plate tester to check the fit.
 (def create-side-nubs? true)
 
+; --- units are all in mm ---
+
 ;;;;;;;;;;;;;;;;;
 ;; Switch Hole ;;
 ;;;;;;;;;;;;;;;;;
 
-; Note: units are all in mm
-
-; dimensions of the switch hole, matches my Gaterons pretty closely
-(def switch-hole-height 14.15)
-(def switch-hole-width switch-hole-height)
-; switch hole wall thickness - i have set this so two walls and the switch hole
-; is the same size as a keycap (~18.5mm)
+; dimensions of the switch hole (matches my Gaterons pretty closely)
+(def switch-hole-size 14.15)
+; switch hole wall thickness - set this so two walls and the switch hole are the
+; same size as a unit length keycap (~18.5mm)
 (def wall-thickness 2.35)
+(def keycap-size (+ switch-hole-size (* wall-thickness 2)))
 ; depth of the switch hole - 4mm is really the minimum for side nubs to work,
 ; 5mm is possible but might make soldering tricky. print the plate tester!
 (def plate-depth 4)
@@ -43,42 +43,38 @@
 (defn key-plate [width-multiplier]
   (let [
         ; wall with hole for switch's retention tab
-        top-wall (->> (cube (+ switch-hole-width (* wall-thickness 2))
-                            wall-thickness
-                            plate-depth)
+        top-wall (->> (cube keycap-size wall-thickness plate-depth)
                       (translate [0
-                                  (+ (/ wall-thickness 2) (/ switch-hole-height 2))
+                                  (+ (/ wall-thickness 2) (/ switch-hole-size 2))
                                   (/ plate-depth 2)]))
         ; hole for switch's retention tab
         retention-hole (->> (cube retention-hole-size
                                  retention-hole-size
                                  retention-hole-depth)
-                           (translate [(+ (/ switch-hole-width 2.5))
+                           (translate [(+ (/ switch-hole-size 2.5))
                                        0
                                        ; shift up slightly to prevent z-fighting
                                        (- (/ retention-hole-depth 2) 0.1)])
                            (rotate (/ π 2) [0 0 1]))
         ; calculations for plates wider than 1.0u
-        ; half the 1.0u plate's width
-        plate-half-width (+ (/ switch-hole-width 2) wall-thickness)
         ; the extra width to add to 1.0u (for 1.0u, this will be 0)
-        plate-extra-width (* plate-half-width (- width-multiplier 1))
+        plate-extra-width (* (/ keycap-size 2) (- width-multiplier 1))
         ; the wall width doesn't include the thickness/hole
         ; (for 1.0u, this will just be the wall thickness)
         left-wall-width (+ wall-thickness plate-extra-width)
         ; wall with optional side nub
         left-wall (->> (cube left-wall-width
-                             (+ switch-hole-height (* wall-thickness 2))
+                             (+ switch-hole-size (* wall-thickness 2))
                              plate-depth)
-                       (translate [(+ (/ left-wall-width 2) (/ switch-hole-width 2))
+                       (translate [(+ (/ left-wall-width 2) (/ switch-hole-size 2))
                                    0
                                    (/ plate-depth 2)]))
         ; side nub (wedge and rounded bottom)
         side-nub (->> (binding [*fn* 30] (cylinder 1 2.75))
                       (rotate (/ π 2) [1 0 0])
-                      (translate [(+ (/ switch-hole-width 2)) 0 1])
+                      (translate [(+ (/ switch-hole-size 2)) 0 1])
                       (hull (->> (cube 1.5 2.75 side-nub-depth)
-                                 (translate [(+ (/ 1.5 2) (/ switch-hole-width 2))
+                                 (translate [(+ (/ 1.5 2) (/ switch-hole-size 2))
                                              0
                                              (/ side-nub-depth 2)])))
                       (translate [0 0 (- plate-depth side-nub-depth)]))
@@ -103,3 +99,47 @@
        (mirror [0 0 1])
        (translate [0 0 plate-depth])))
 (spit "things/plate-tester.scad" (write-scad plate-tester))
+
+;;;;;;;;;;;;;
+;; Keycaps ;;
+;;;;;;;;;;;;;
+
+; the depth of the profile; i.e. how tall is the keycap?
+(def keycap-profile-depth 7.5)
+; the depth of the switch; i.e. how far does it stick up from the plate until
+; the keycap begins? set this to close to zero to simulate keys being "pressed"
+(def switch-depth 6.3)
+(def keycap-face-size 12)
+
+(defn key-cap [width-multiplier]
+  (let [cap-width (* keycap-size width-multiplier)
+        ; don't scale the face width to keep the edge at the same angle
+        face-diff (- keycap-size keycap-face-size)
+        face-width (- cap-width face-diff)
+        cap (hull (->> (square cap-width keycap-size)
+                       (extrude-linear {:height 0.1 :twist 0 :convexity 0})
+                       (translate [0 0 0.05]))
+                  (->> (square face-width keycap-face-size)
+                       (extrude-linear {:height 0.1 :twist 0 :convexity 0})
+                       (translate [0 0 keycap-profile-depth]))
+                  )]
+   (->> cap
+        (translate [0 0 (+ plate-depth switch-depth)])
+        (color [220/255 163/255 163/255 1]))))
+
+(def single-cap (key-cap 1.0))
+(def one-quater-cap (key-cap 1.25))
+(def one-half-cap (key-cap 1.5))
+(def double-cap (key-cap 2.0))
+
+(def keycap-tester
+  (union (->> one-half-plate (translate [0 -20 0]))
+         (->> one-half-cap (translate [0 -20 0]))
+         (->> single-plate (translate [10 0 0]))
+         (->> single-cap (translate [10 0 0]))
+         (->> one-quater-plate (translate [-13 0 0]))
+         (->> one-quater-cap (translate [-13 0 0]))
+         (->> double-plate (translate [0 20 0]))
+         (->> double-cap (translate [0 20 0]))))
+
+(spit "things/right.scad" (write-scad keycap-tester))
