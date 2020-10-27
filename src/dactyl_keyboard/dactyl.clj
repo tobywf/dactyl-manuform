@@ -111,7 +111,7 @@
 
 ; --- main options
 
-; the depth of the profile; i.e. how tall is the keycap?
+; the depth of the profile; i.e. how tall is the keycap? (default is DSA)
 (def keycap-profile-depth 7.5)
 ; the depth of the switch; i.e. how far does it stick up from the plate until
 ; the keycap begins? set this to close to zero to simulate keys being "pressed"
@@ -146,9 +146,9 @@
 (def one-half-cap (key-cap 1.5))
 (def double-cap (key-cap 2.0))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Placement Functions ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Finger Placement Functions ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; --- main options
 
@@ -179,9 +179,12 @@
 ; basically which column is considered the "bottom" of the curve
 (def col-angle-offset 3)
 ; move columns around to adjust for different finger lengths
-(defn col-offset [col] (cond (= col 2) [0 2.82 -3.0]
-                             (>= col 4) [0 -5.8 5.64]
-                             :else [0 0 0]))
+; (mainly trial and error)
+(defn col-offset [col]
+  (cond (= col 2) [0 2.82 -3.0] ; middle finger
+        (= col 4) [0 -5.8 5] ; 1.0u pinky column
+        (>= col 5) [4 -7 7] ; 1.5u pinky column
+        :else [0 0 0]))
 
 ; coarse tilt/tenting adjust (separate from the curvature, acts on all keys)
 (def tilt (/ π 24))
@@ -190,6 +193,12 @@
 ; which keys to skip (default is inner front and outer front)
 (defn skip-place? [col row]
   (and (= row (dec rows)) (or (= col 0) (= col (dec columns)))))
+
+; whether or not to use a bigger outer pinky column
+(def pinky-col? true)
+; size of the outer pinky plate (ignored if false, also adjust col-offset)
+(def pinky-plate one-half-plate)
+(def pinky-cap one-half-cap)
 
 ; --- geometry options (mainly derived from curvature params)
 
@@ -221,14 +230,16 @@
          (rotate tilt [0 1 0])
          (translate [0 0 place-z-offset]))))
 
-(defn place-all [single-shape one-half-shape]
+(defn place-all [single-shape one-quater-shape]
   (apply union
          (for [col (range 0 columns)
                row (range 0 rows)
                :when (not (skip-place? col row))]
-           (key-place col row single-shape))))
+           (let [is-pinky-col (and pinky-col? (= col (dec columns)))]
+            (->> (if (not is-pinky-col) single-shape one-quater-shape)
+                 (key-place col row))))))
 
-(def key-plates (place-all single-plate one-half-plate))
-(def key-caps (place-all single-cap one-half-cap))
+(def key-plates (place-all single-plate pinky-plate))
+(def key-caps (place-all single-cap pinky-cap))
 
 (spit "things/right.scad" (write-scad (union key-plates key-caps)))
