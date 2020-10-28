@@ -36,22 +36,22 @@
 (def keycap-size (+ switch-hole-size (* wall-thickness 2)))
 ; depth of the switch hole - 4mm is really the minimum for side nubs to work,
 ; 5mm is possible but might make soldering tricky. print the plate tester!
-(def plate-depth 4)
+(def plate-thickness 4)
 ; depth of the side nubs, this couldn't be bigger due to switch geometry
 (def side-nub-depth 4)
 ; starting depth of the retention tab hole/cutout from the top of the plate
 (def retention-start-depth 1.5)
-(def retention-hole-depth (- plate-depth retention-start-depth))
+(def retention-hole-depth (- plate-thickness retention-start-depth))
 ; width/height of the retention tab hole/cutout
 (def retention-hole-size 5)
 
 (defn key-plate [width-multiplier]
   (let [
         ; wall with hole for switch's retention tab
-        top-wall (->> (cube keycap-size wall-thickness plate-depth)
+        top-wall (->> (cube keycap-size wall-thickness plate-thickness)
                       (translate [0
                                   (+ (/ wall-thickness 2) (/ switch-hole-size 2))
-                                  (/ plate-depth 2)]))
+                                  (/ plate-thickness 2)]))
         ; hole for switch's retention tab
         retention-hole (->> (cube retention-hole-size
                                  retention-hole-size
@@ -70,10 +70,10 @@
         ; wall with optional side nub
         left-wall (->> (cube left-wall-width
                              (+ switch-hole-size (* wall-thickness 2))
-                             plate-depth)
+                             plate-thickness)
                        (translate [(+ (/ left-wall-width 2) (/ switch-hole-size 2))
                                    0
-                                   (/ plate-depth 2)]))
+                                   (/ plate-thickness 2)]))
         ; side nub (wedge and rounded bottom)
         side-nub (->> (binding [*fn* 30] (cylinder 1 2.75))
                       (rotate (/ π 2) [1 0 0])
@@ -82,7 +82,7 @@
                                  (translate [(+ (/ 1.5 2) (/ switch-hole-size 2))
                                              0
                                              (/ side-nub-depth 2)])))
-                      (translate [0 0 (- plate-depth side-nub-depth)]))
+                      (translate [0 0 (- plate-thickness side-nub-depth)]))
         plate-half (union (difference top-wall retention-hole)
                           left-wall
                           (if create-side-nubs? side-nub))]
@@ -102,7 +102,7 @@
               (->> double-plate (translate [0 20 0])))
        ; flip the plates on their head for easier printing (no supports)
        (mirror [0 0 1])
-       (translate [0 0 plate-depth])))
+       (translate [0 0 plate-thickness])))
 (spit "things/plate-tester.scad" (write-scad plate-tester))
 
 ;;;;;;;;;;;;;
@@ -135,10 +135,10 @@
                   )
         push (cube cap-width keycap-size switch-depth)]
    (union (->> cap
-               (translate [0 0 (+ plate-depth switch-depth)])
+               (translate [0 0 (+ plate-thickness switch-depth)])
                (color [220/255 163/255 163/255 1.0]))
           (->> push
-               (translate [0 0 (+ plate-depth (/ switch-depth 2))])
+               (translate [0 0 (+ plate-thickness (/ switch-depth 2))])
                (color [135/255 206/255 235/255 0.2])))))
 
 (def single-cap (key-cap 1.0))
@@ -146,9 +146,9 @@
 (def one-half-cap (key-cap 1.5))
 (def double-cap (key-cap 2.0))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Finger Placement Functions ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Key well Placement Functions ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; --- main options
 
@@ -194,15 +194,12 @@
 (defn skip-place? [col row]
   (and (= row (dec rows)) (or (= col 0) (= col (dec columns)))))
 
-; whether or not to use a bigger outer pinky column
-(def pinky-col? true)
-; size of the outer pinky plate (ignored if false, also adjust col-offset)
-(def pinky-plate one-half-plate)
-(def pinky-cap one-half-cap)
+; this sets the shape width; the default is an 1.5u outer pinky column
+(defn shape-width [col row] (if (= col (dec columns)) 1.5 1.0))
 
 ; --- geometry options (mainly derived from curvature params)
 
-(def cap-top-depth (+ plate-depth keycap-profile-depth))
+(def cap-top-depth (+ plate-thickness keycap-profile-depth))
 (def row-radius1 (+ (/ (/ row-spaced 2) (Math/sin (/ α1 2))) cap-top-depth))
 (def row-radius2 (+ (/ (/ row-spaced 2) (Math/sin (/ α2 2))) cap-top-depth))
 (def col-radius1 (+ (/ (/ col-spaced 2) (Math/sin (/ β1 2))) cap-top-depth))
@@ -230,16 +227,187 @@
          (rotate tilt [0 1 0])
          (translate [0 0 place-z-offset]))))
 
-(defn place-all [single-shape one-quater-shape]
+(defn place-all [shape-fn]
   (apply union
          (for [col (range 0 columns)
                row (range 0 rows)
                :when (not (skip-place? col row))]
-           (let [is-pinky-col (and pinky-col? (= col (dec columns)))]
-            (->> (if (not is-pinky-col) single-shape one-quater-shape)
-                 (key-place col row))))))
+           (key-place col row (shape-fn col row)))))
 
-(def key-plates (place-all single-plate pinky-plate))
-(def key-caps (place-all single-cap pinky-cap))
+(def key-plates (place-all (fn [col row] (key-plate (shape-width col row)))))
+(def key-caps (place-all (fn [col row] (key-cap (shape-width col row)))))
 
-(spit "things/right.scad" (write-scad (union key-plates key-caps)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Key well Web Connectors ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+; see skipped-keys-fill below - i can't move it up here because of where the
+; function definitions are
+
+; --- geometry options (shouldn't need changing)
+
+(def web-thickness plate-thickness)
+(def post-size 0.1)
+(def post-adj (/ post-size 2))
+(def web-post (->> (cube post-size post-size web-thickness)
+                   (translate [0 0 (+ (/ web-thickness -2) plate-thickness)])))
+
+(defn web-post-tr [col row]
+  (let [keycap-width (* keycap-size (shape-width col row))]
+   (translate [(- (/ keycap-width 2) post-adj) (- (/ keycap-size 2) post-adj) 0] web-post)))
+(defn web-post-tl [col row]
+  (let [keycap-width (* keycap-size (shape-width col row))]
+   (translate [(+ (/ keycap-width -2) post-adj) (- (/ keycap-size 2) post-adj) 0] web-post)))
+(defn web-post-bl [col row]
+  (let [keycap-width (* keycap-size (shape-width col row))]
+   (translate [(+ (/ keycap-width -2) post-adj) (+ (/ keycap-size -2) post-adj) 0] web-post)))
+(defn web-post-br [col row]
+  (let [keycap-width (* keycap-size (shape-width col row))]
+   (translate [(- (/ keycap-width 2) post-adj) (+ (/ keycap-size -2) post-adj) 0] web-post)))
+
+(defn post-place [col row shape-fn] (key-place col row (shape-fn col row)))
+
+(defn triangle-hulls [& shapes]
+  (apply union
+         (map (partial apply hull)
+              (partition 3 1 shapes))))
+
+; triangle in top-right (actually 3 triangles, to fill plate and connectors)
+; 2 +--+ 3
+;    \ |
+;     \|
+;      * 1
+(defn triangle-tr [col row]
+  (let [up-row (dec row) right-col (inc col)]
+   (union
+     (triangle-hulls ; triangle to fill plate
+       (post-place right-col row web-post-bl)
+       (post-place col up-row web-post-bl)
+       (post-place col row web-post-tr))
+     (triangle-hulls ; triangle to fill top connector
+       (post-place col up-row web-post-bl)
+       (post-place col up-row web-post-br)
+       (post-place col row web-post-tr))
+     (triangle-hulls ; triangle to fill right connector
+       (post-place right-col row web-post-tl)
+       (post-place right-col row web-post-bl)
+       (post-place col row web-post-tr)))))
+
+
+; triangle in top-left (actually 3 triangles, to fill plate and connectors)
+; 3 +--+ 1
+;   | /
+;   |/
+; 2 *
+(defn triangle-tl [col row]
+  (let [up-row (dec row) left-col (dec col)]
+   (union
+     (triangle-hulls ; triangle to fill plate
+       (post-place col up-row web-post-br)
+       (post-place left-col row web-post-br)
+       (post-place col row web-post-tl))
+     (triangle-hulls ; triangle to fill left connector
+       (post-place left-col row web-post-br)
+       (post-place left-col row web-post-tr)
+       (post-place col row web-post-tl))
+     (triangle-hulls ; triangle to fill top connector
+       (post-place col up-row web-post-br)
+       (post-place col up-row web-post-bl)
+       (post-place col row web-post-tl)))))
+
+; triangle in bottom-right (actually two triangles, to fill plate and connector)
+;      * 2
+;     /|
+;    / |
+; 1 +--+ 3
+(defn triangle-br [col row]
+  (let [down-row (inc row) right-col (inc col)]
+   (union
+     (triangle-hulls ; triangle to fill plate
+       (post-place col down-row web-post-tl)
+       (post-place right-col row web-post-tl)
+       (post-place col row web-post-br))
+     (triangle-hulls ; triangle to fill right connector
+       (post-place right-col row web-post-tl)
+       (post-place right-col row web-post-bl)
+       (post-place col row web-post-br))
+     (triangle-hulls ; triangle to fill bottom connector
+       (post-place col down-row web-post-tr)
+       (post-place col down-row web-post-tl)
+       (post-place col row web-post-br)))))
+
+; triangle in bottom-left (actually two triangles, to fill plate and connector)
+; *
+; |\
+; | \
+; +--+
+(defn triangle-bl [col row]
+  (let [down-row (inc row) left-col (dec col)]
+   (union
+     (triangle-hulls ; triangle to fill plate
+       (post-place left-col row web-post-tr)
+       (post-place col down-row web-post-tr)
+       (post-place col row web-post-bl))
+     (triangle-hulls ; triangle to fill left connector
+       (post-place left-col row web-post-br)
+       (post-place left-col row web-post-tr)
+       (post-place col row web-post-bl))
+     (triangle-hulls ; triangle to fill top connector
+       (post-place col down-row web-post-tr)
+       (post-place col down-row web-post-tl)
+       (post-place col row web-post-bl)))))
+
+; --- main options
+
+; fill geometry for skipped keys (e.g. corners if desired). also see loop for
+; diagonal connections below, and skip those if no fill geometry is desired.
+(def skipped-keys-fill
+  [(triangle-tr 0 (dec rows))
+   (triangle-tl (dec columns) (dec rows))])
+
+; ---
+
+(def connectors
+  (apply union
+         (concat
+          ; row connections
+          (for [col (drop-last (range 0 columns))
+                row (range 0 rows)
+                :when (not (or (skip-place? col row)
+                               (skip-place? (inc col) row)))]
+            (triangle-hulls
+             (post-place (inc col) row web-post-tl)
+             (post-place col row web-post-tr)
+             (post-place (inc col) row web-post-bl)
+             (post-place col row web-post-br)))
+          ; column connections
+          (for [col (range 0 columns)
+                row (drop-last (range 0 rows))
+                :when (not (or (skip-place? col row)
+                               (skip-place? col (inc row))))]
+            (triangle-hulls
+             (post-place col row web-post-bl)
+             (post-place col row web-post-br)
+             (post-place col (inc row) web-post-tl)
+             (post-place col (inc row) web-post-tr)))
+          ; diagonal connections
+          (for [col (drop-last (range 0 columns))
+                row (drop-last (range 0 rows))]
+                ; if skipped keys aren't filled, these can be left off
+                ; :when (not (or (skip-place? col row)
+                ;                (skip-place? col (inc row))
+                ;                (skip-place? (inc col) row)
+                ;                (skip-place? (inc col) (inc row))))]
+            (triangle-hulls
+             (post-place col row web-post-br)
+             (post-place col (inc row) web-post-tr)
+             (post-place (inc col) row web-post-bl)
+             (post-place (inc col) (inc row) web-post-tl)))
+          ; geometry to fill skipped keys
+          skipped-keys-fill
+          )))
+
+(spit "things/keywell-tester.scad" (write-scad (union key-plates connectors)))
+(spit "things/keywell-visual.scad" (write-scad (union key-plates key-caps)))
