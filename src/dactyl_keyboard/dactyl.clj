@@ -24,6 +24,8 @@
 ; for Cherry MX or Gateron switches, this can be turned on to hold the switches
 ; more securely. for other switches (like Kailh), turn this off. you can print
 ; the switch hole plate tester to check the fit.
+; (you may also want to turn this off for key well test prints; to make it
+; easier to remove switches from the prototype)
 (def create-side-nubs? true)
 
 ; --- geometry options, may need tweaking for non-Cherry MXs or non-Gaterons
@@ -114,7 +116,7 @@
 ; the depth of the profile; i.e. how tall is the keycap? (default is DSA)
 (def keycap-profile-depth 7.5)
 ; the depth of the switch; i.e. how far does it stick up from the plate until
-; the keycap begins? set this to close to zero to simulate keys being "pressed"
+; the keycap begins?
 (def switch-depth 6.3)
 
 ; --- geometry options
@@ -152,90 +154,80 @@
 
 ; --- main options
 
-; number of rows, if changed also look at "back-row?" and "row-angle-offset"
-(def rows 5)
-; front rows curvature
-(def α1 (/ π 18))
-; back rows curvature
-(def α2 (/ π 8))
-; row spacing
-(def row-spaced (+ keycap-size 1))
-; which curvature to apply (note: range is 0/backmost - rows/frontmost)
-(defn back-row? [row] (< row 3))
-; basically which row is considered the "bottom" of the curve
-(def row-angle-offset 2)
-
-; number of columns, if changed also look at "inner-col?", "col-angle-offset",
-; and "col-offsets"
 (def columns 6)
-; outer column curvature
-(def β1 (/ π 32))
-; inner column curvature
-(def β2 (/ π 24))
-; column spacing
-(def col-spaced (+ keycap-size 4))
-; which curvature to apply (note range is 0/innermost - columns/outermost)
-(defn inner-col? [column] (< column 4))
-; basically which column is considered the "bottom" of the curve
-(def col-angle-offset 3)
-; move columns around to adjust for different finger lengths
-; (mainly trial and error)
-(defn col-offset [col]
-  (cond (= col 2) [0 2.82 -3.0] ; middle finger
-        (= col 4) [0 -5.8 5] ; 1.0u pinky column
-        (>= col 5) [4 -7 7] ; 1.5u pinky column
-        :else [0 0 0]))
+(def rows 5)
 
-; coarse tilt/tenting adjust (separate from the curvature, acts on all keys)
-(def tilt (/ π 24))
-; raise plates (equals more height to print, but also to wire)
-(def place-z-offset 13)
 ; which keys to skip (default is inner front and outer front)
 (defn skip-place? [col row]
   (and (= row (dec rows)) (or (= col 0) (= col (dec columns)))))
+; currently ignored in the key well
+(defn shape-width [col row] 1.0)
 
-; this sets the shape width; the default is an 1.5u outer pinky column
-(defn shape-width [col row] (if (= col (dec columns)) 1.5 1.0))
+; the grid spacing
+(def col-spaced (+ keycap-size 2.0))
+(def row-spaced (+ keycap-size 0.5))
 
-; --- geometry options (mainly derived from curvature params)
+; --- curvature options
 
-(def cap-top-depth (+ plate-thickness keycap-profile-depth))
-(def row-radius1 (+ (/ (/ row-spaced 2) (Math/sin (/ α1 2))) cap-top-depth))
-(def row-radius2 (+ (/ (/ row-spaced 2) (Math/sin (/ α2 2))) cap-top-depth))
-(def col-radius1 (+ (/ (/ col-spaced 2) (Math/sin (/ β1 2))) cap-top-depth))
-(def col-radius2 (+ (/ (/ col-spaced 2) (Math/sin (/ β2 2))) cap-top-depth))
+; the options are usually parametrised per column
+
+; the radius of a circle onto which each column's keys will be mapped
+(def col-radius [70 85 75 70 90 75])
+; the depth/z offset for each column; roughly corresponds to finger length
+; this is subtracted, so higher values means deeper/lower
+(def col-depth [22 22 20 20 12 5])
+; a general depth/z offset, to adjust keys up after col-depth was applied
+(def col-z-offset 30)
+; the tilt of each column in degrees
+(def col-tilt-deg [0 -5 -10 -10 -18 -28])
+; small tweak to column spacing - useful to compensate for large differences
+; in tilt between columns
+(def col-x-tweak [0.0 0.0 0.5 0.0 0.0 0.5])
+(def col-y-tweak [-3.0 -4.0 0.0 0.0 0.0 -2.0])
+; which key is the center/lowest point of the circle - can be fractional
+(def row-center 1.75)
+
+; --- geometry options
+
+(def cap-depth (+ plate-thickness switch-depth))
+; angle = row-spaced (arc length) / radius
+(def col-angle (mapv (fn [r] (/ row-spaced (- r cap-depth))) col-radius))
 
 (defn key-place [col row shape]
   (let [
-        row-radius (if (back-row? row) row-radius2 row-radius1)
-        row-angle (* (if (back-row? row) α2 α1) (- row-angle-offset row))
-        col-radius (if (inner-col? col) col-radius2 col-radius1)
-        col-angle (* (if (inner-col? col) β2 β1) (- col-angle-offset col))
-        placed-shape (->> shape
-                          ; row rotation should be first, to preserve columnar
-                          ; distances (i.e. distances between keys in a col)
-                          (translate [0 0 (- row-radius)])
-                          (rotate row-angle [1 0 0])
-                          (translate [0 0 row-radius])
-                          ; next, apply column rotation/curvatures
-                          (translate [0 0 (- col-radius)])
-                          (rotate col-angle [0 1 0])
-                          (translate [0 0 col-radius])
-                          ; tweak translation to account for finger lengths
-                          (translate (col-offset col)))]
-    (->> placed-shape
-         (rotate tilt [0 1 0])
-         (translate [0 0 place-z-offset]))))
+        ; invert row, so row 0 is at the front (y positive) and row 5 is at the
+        ; back (y negative)
+        row (- row-center row)
+        ; x is grid spacing, but because of the tilt it may need a tweak
+        x (+ (* col col-spaced) (col-x-tweak col))
+        ; z is easy, too
+        z (- col-z-offset (col-depth col))
+        ; y is harder - want to map the linear row position onto a circle/arc
+        α (col-angle col)
+        r (col-radius col)
+        y (col-y-tweak col)
+        ; finally, the tilt of each column to create a bowl-like key well
+        β (deg2rad (col-tilt-deg col))]
+   (->> shape
+              (translate [0 0 (- r)])
+              (rotate (* row α) [1 0 0])
+              (translate [0 0 r])
+              (translate [0 0 (- plate-thickness)])
+              (rotate β [0 1 0])
+              (translate [0 0 plate-thickness])
+              (translate [x y z]))))
 
-(defn place-all [shape-fn]
+(defn place-all [shape]
   (apply union
          (for [col (range 0 columns)
                row (range 0 rows)
                :when (not (skip-place? col row))]
-           (key-place col row (shape-fn col row)))))
+           (key-place col row shape))))
 
-(def key-plates (place-all (fn [col row] (key-plate (shape-width col row)))))
-(def key-caps (place-all (fn [col row] (key-cap (shape-width col row)))))
+(def key-plates (place-all single-plate))
+
+(spit "things/keywell-visual.scad"
+  (write-scad (union key-plates (place-all single-cap))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Key well Web Connectors ;;
@@ -409,5 +401,5 @@
           skipped-keys-fill
           )))
 
-(spit "things/keywell-tester.scad" (write-scad (union key-plates connectors)))
-(spit "things/keywell-visual.scad" (write-scad (union key-plates key-caps)))
+(spit "things/keywell-tester.scad"
+  (write-scad (union key-plates connectors)))

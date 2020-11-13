@@ -12,5 +12,6 @@
 *.ai
 *.svg
 *.dxf
+*.3mf
 
 .DS_Store
