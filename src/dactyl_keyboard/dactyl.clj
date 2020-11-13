@@ -15,6 +15,9 @@
 ; all units are in mm
 ; width is x, height is y, depth is z, length or size is usually x or y
 
+; "tester" files are for printing, and checking that everything works. i highly
+; recommend printing these before printing the final keyboard.
+
 ;;;;;;;;;;;;;;;;;
 ;; Switch Hole ;;
 ;;;;;;;;;;;;;;;;;
@@ -22,11 +25,15 @@
 ; --- main options
 
 ; for Cherry MX or Gateron switches, this can be turned on to hold the switches
-; more securely. for other switches (like Kailh), turn this off. you can print
-; the switch hole plate tester to check the fit.
-; (you may also want to turn this off for key well test prints; to make it
-; easier to remove switches from the prototype)
-(def create-side-nubs? true)
+; more securely. for other switches (like Kailh), turn this off.
+; you can print the switch hole plate tester to check the fit. turned off
+; automatically for the key well tester, so switches are easier to remove.
+(def create-nubs? true)
+; create holes for the little caches on switches to mount in. i haven't found a
+; reason to turn this off - it might make printing easier?
+; you can print the switch hole plate tester to check the fit. turned off
+; automatically for the key well tester, so switches are easier to remove.
+(def create-holes? true)
 
 ; --- geometry options, may need tweaking for non-Cherry MXs or non-Gaterons
 
@@ -47,7 +54,7 @@
 ; width/height of the retention tab hole/cutout
 (def retention-hole-size 5)
 
-(defn key-plate [width-multiplier]
+(defn key-plate [holes? nubs? width-multiplier]
   (let [
         ; wall with hole for switch's retention tab
         top-wall (->> (cube keycap-size wall-thickness plate-thickness)
@@ -85,16 +92,23 @@
                                              0
                                              (/ side-nub-depth 2)])))
                       (translate [0 0 (- plate-thickness side-nub-depth)]))
-        plate-half (union (difference top-wall retention-hole)
-                          left-wall
-                          (if create-side-nubs? side-nub))]
+        top-wall (if holes? (difference top-wall retention-hole) top-wall)
+        left-wall (if nubs? (union left-wall side-nub) left-wall)
+        plate-half (union top-wall left-wall)]
 
     (union plate-half (->> plate-half (mirror [1 0 0]) (mirror [0 1 0])))))
 
-(def single-plate (key-plate 1.0))
-(def one-quater-plate (key-plate 1.25))
-(def one-half-plate (key-plate 1.5))
-(def double-plate (key-plate 2.0))
+; default plate, with specified features
+(def key-plate-default (partial key-plate create-holes? create-nubs?))
+; test plate, with no holes or nubs for easier key removal - note this isn't
+; used for they key plate tester, since you want to check the features. but it
+; is handy for the key well tester
+(def key-plate-simple (partial key-plate false false))
+
+(def single-plate (key-plate-default 1.00))
+(def one-quater-plate (key-plate-default 1.25))
+(def one-half-plate (key-plate-default 1.50))
+(def double-plate (key-plate-default 2.00))
 
 ; the plate tester is to quickly print the switch holes and check switches fit
 (def plate-tester
@@ -143,11 +157,6 @@
                (translate [0 0 (+ plate-thickness (/ switch-depth 2))])
                (color [135/255 206/255 235/255 0.2])))))
 
-(def single-cap (key-cap 1.0))
-(def one-quater-cap (key-cap 1.25))
-(def one-half-cap (key-cap 1.5))
-(def double-cap (key-cap 2.0))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Key well Placement Functions ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -160,7 +169,7 @@
 ; which keys to skip (default is inner front and outer front)
 (defn skip-place? [col row]
   (and (= row (dec rows)) (or (= col 0) (= col (dec columns)))))
-; currently ignored in the key well
+; TODO: parametrize me
 (defn shape-width [col row] 1.0)
 
 ; the grid spacing
@@ -217,17 +226,20 @@
               (translate [0 0 plate-thickness])
               (translate [x y z]))))
 
+; TODO: parametrize me
 (defn place-all [shape]
   (apply union
          (for [col (range 0 columns)
                row (range 0 rows)
                :when (not (skip-place? col row))]
            (key-place col row shape))))
+(def key-plates (place-all (key-plate-default 1.0)))
+(def key-caps (place-all (key-cap 1.0)))
+; test plate, with no holes or nubs for easier key removal
+(def test-plates (place-all (key-plate-simple 1.0)))
 
-(def key-plates (place-all single-plate))
-
-(spit "things/keywell-visual.scad"
-  (write-scad (union key-plates (place-all single-cap))))
+; the visual key well representation is good for checking clearances
+(spit "things/keywell-visual.scad" (write-scad (union key-plates key-caps)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Key well Web Connectors ;;
@@ -431,4 +443,4 @@
           )))
 
 ; the key well tester is good for checking the geometry by printing
-(spit "things/keywell-tester.scad" (write-scad (union key-plates web-connectors)))
+(spit "things/keywell-tester.scad" (write-scad (union test-plates web-connectors)))
