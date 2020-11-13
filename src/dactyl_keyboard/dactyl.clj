@@ -246,18 +246,28 @@
 (def web-post (->> (cube post-size post-size web-thickness)
                    (translate [0 0 (+ (/ web-thickness -2) plate-thickness)])))
 
-(defn web-post-tr [col row]
+; ---
+
+; most of these functions can take a different shape. this seems unnecessary
+; now, but i had planned to also generate support material
+
+(defn post-tr [shape col row]
   (let [keycap-width (* keycap-size (shape-width col row))]
-   (translate [(- (/ keycap-width 2) post-adj) (- (/ keycap-size 2) post-adj) 0] web-post)))
-(defn web-post-tl [col row]
+   (translate [(- (/ keycap-width 2) post-adj) (- (/ keycap-size 2) post-adj) 0] shape)))
+(defn post-tl [shape col row]
   (let [keycap-width (* keycap-size (shape-width col row))]
-   (translate [(+ (/ keycap-width -2) post-adj) (- (/ keycap-size 2) post-adj) 0] web-post)))
-(defn web-post-bl [col row]
+   (translate [(+ (/ keycap-width -2) post-adj) (- (/ keycap-size 2) post-adj) 0] shape)))
+(defn post-bl [shape col row]
   (let [keycap-width (* keycap-size (shape-width col row))]
-   (translate [(+ (/ keycap-width -2) post-adj) (+ (/ keycap-size -2) post-adj) 0] web-post)))
-(defn web-post-br [col row]
+   (translate [(+ (/ keycap-width -2) post-adj) (+ (/ keycap-size -2) post-adj) 0] shape)))
+(defn post-br [shape col row]
   (let [keycap-width (* keycap-size (shape-width col row))]
-   (translate [(- (/ keycap-width 2) post-adj) (+ (/ keycap-size -2) post-adj) 0] web-post)))
+   (translate [(- (/ keycap-width 2) post-adj) (+ (/ keycap-size -2) post-adj) 0] shape)))
+
+(def web-post-tr (partial post-tr web-post))
+(def web-post-tl (partial post-tl web-post))
+(def web-post-bl (partial post-bl web-post))
+(def web-post-br (partial post-br web-post))
 
 (defn post-place [col row shape-fn] (key-place col row (shape-fn col row)))
 
@@ -271,97 +281,116 @@
 ;    \ |
 ;     \|
 ;      * 1
-(defn triangle-tr [col row]
-  (let [up-row (dec row) right-col (inc col)]
+(defn triangle-tr [shape col row]
+  (let [up-row (dec row)
+        right-col (inc col)
+        shape-post-tr (partial post-tr shape)
+        shape-post-tl (partial post-tl shape)
+        shape-post-bl (partial post-bl shape)
+        shape-post-br (partial post-br shape)]
    (union
      (triangle-hulls ; triangle to fill plate
-       (post-place right-col row web-post-bl)
-       (post-place col up-row web-post-bl)
-       (post-place col row web-post-tr))
+       (post-place right-col row shape-post-bl)
+       (post-place col up-row shape-post-bl)
+       (post-place col row shape-post-tr))
      (triangle-hulls ; triangle to fill top connector
-       (post-place col up-row web-post-bl)
-       (post-place col up-row web-post-br)
-       (post-place col row web-post-tr))
+       (post-place col up-row shape-post-bl)
+       (post-place col up-row shape-post-br)
+       (post-place col row shape-post-tr))
      (triangle-hulls ; triangle to fill right connector
-       (post-place right-col row web-post-tl)
-       (post-place right-col row web-post-bl)
-       (post-place col row web-post-tr)))))
-
+       (post-place right-col row shape-post-tl)
+       (post-place right-col row shape-post-bl)
+       (post-place col row shape-post-tr)))))
 
 ; triangle in top-left (actually 3 triangles, to fill plate and connectors)
 ; 3 +--+ 1
 ;   | /
 ;   |/
 ; 2 *
-(defn triangle-tl [col row]
-  (let [up-row (dec row) left-col (dec col)]
+(defn triangle-tl [shape col row]
+  (let [up-row (dec row)
+        left-col (dec col)
+        shape-post-tr (partial post-tr shape)
+        shape-post-tl (partial post-tl shape)
+        shape-post-bl (partial post-bl shape)
+        shape-post-br (partial post-br shape)]
    (union
      (triangle-hulls ; triangle to fill plate
-       (post-place col up-row web-post-br)
-       (post-place left-col row web-post-br)
-       (post-place col row web-post-tl))
+       (post-place col up-row shape-post-br)
+       (post-place left-col row shape-post-br)
+       (post-place col row shape-post-tl))
      (triangle-hulls ; triangle to fill left connector
-       (post-place left-col row web-post-br)
-       (post-place left-col row web-post-tr)
-       (post-place col row web-post-tl))
+       (post-place left-col row shape-post-br)
+       (post-place left-col row shape-post-tr)
+       (post-place col row shape-post-tl))
      (triangle-hulls ; triangle to fill top connector
-       (post-place col up-row web-post-br)
-       (post-place col up-row web-post-bl)
-       (post-place col row web-post-tl)))))
+       (post-place col up-row shape-post-br)
+       (post-place col up-row shape-post-bl)
+       (post-place col row shape-post-tl)))))
 
 ; triangle in bottom-right (actually two triangles, to fill plate and connector)
 ;      * 2
 ;     /|
 ;    / |
 ; 1 +--+ 3
-(defn triangle-br [col row]
-  (let [down-row (inc row) right-col (inc col)]
+(defn triangle-br [shape col row]
+  (let [down-row (inc row)
+        right-col (inc col)
+        shape-post-tr (partial post-tr shape)
+        shape-post-tl (partial post-tl shape)
+        shape-post-bl (partial post-bl shape)
+        shape-post-br (partial post-br shape)]
    (union
      (triangle-hulls ; triangle to fill plate
-       (post-place col down-row web-post-tl)
-       (post-place right-col row web-post-tl)
-       (post-place col row web-post-br))
+       (post-place col down-row shape-post-tl)
+       (post-place right-col row shape-post-tl)
+       (post-place col row shape-post-br))
      (triangle-hulls ; triangle to fill right connector
-       (post-place right-col row web-post-tl)
-       (post-place right-col row web-post-bl)
-       (post-place col row web-post-br))
+       (post-place right-col row shape-post-tl)
+       (post-place right-col row shape-post-bl)
+       (post-place col row shape-post-br))
      (triangle-hulls ; triangle to fill bottom connector
-       (post-place col down-row web-post-tr)
-       (post-place col down-row web-post-tl)
-       (post-place col row web-post-br)))))
+       (post-place col down-row shape-post-tr)
+       (post-place col down-row shape-post-tl)
+       (post-place col row shape-post-br)))))
 
 ; triangle in bottom-left (actually two triangles, to fill plate and connector)
 ; *
 ; |\
 ; | \
 ; +--+
-(defn triangle-bl [col row]
-  (let [down-row (inc row) left-col (dec col)]
+(defn triangle-bl [shape col row]
+  (let [down-row (inc row)
+        left-col (dec col)
+        shape-post-tr (partial post-tr shape)
+        shape-post-tl (partial post-tl shape)
+        shape-post-bl (partial post-bl shape)
+        shape-post-br (partial post-br shape)]
    (union
      (triangle-hulls ; triangle to fill plate
-       (post-place left-col row web-post-tr)
-       (post-place col down-row web-post-tr)
-       (post-place col row web-post-bl))
+       (post-place left-col row shape-post-tr)
+       (post-place col down-row shape-post-tr)
+       (post-place col row shape-post-bl))
      (triangle-hulls ; triangle to fill left connector
-       (post-place left-col row web-post-br)
-       (post-place left-col row web-post-tr)
-       (post-place col row web-post-bl))
+       (post-place left-col row shape-post-br)
+       (post-place left-col row shape-post-tr)
+       (post-place col row shape-post-bl))
      (triangle-hulls ; triangle to fill top connector
-       (post-place col down-row web-post-tr)
-       (post-place col down-row web-post-tl)
-       (post-place col row web-post-bl)))))
+       (post-place col down-row shape-post-tr)
+       (post-place col down-row shape-post-tl)
+       (post-place col row shape-post-bl)))))
 
 ; --- main options
 
 ; fill geometry for skipped keys (e.g. corners if desired). also see loop for
 ; diagonal connections below, and skip those if no fill geometry is desired.
-(def skipped-keys-fill
-  [(triangle-tr 0 (dec rows))
-   (triangle-tl (dec columns) (dec rows))])
+(defn skipped-keys-fill [shape]
+  [(triangle-tr shape 0 (dec rows))
+   (triangle-tl shape (dec columns) (dec rows))])
 
 ; ---
 
-(def connectors
+(def web-connectors
   (apply union
          (concat
           ; row connections
@@ -398,8 +427,8 @@
              (post-place (inc col) row web-post-bl)
              (post-place (inc col) (inc row) web-post-tl)))
           ; geometry to fill skipped keys
-          skipped-keys-fill
+          (skipped-keys-fill web-post)
           )))
 
-(spit "things/keywell-tester.scad"
-  (write-scad (union key-plates connectors)))
+; the key well tester is good for checking the geometry by printing
+(spit "things/keywell-tester.scad" (write-scad (union key-plates web-connectors)))
