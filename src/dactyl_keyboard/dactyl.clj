@@ -444,3 +444,97 @@
 
 ; the key well tester is good for checking the geometry by printing
 (spit "things/keywell-tester.scad" (write-scad (union test-plates web-connectors)))
+
+;;;;;;;;;;;;;;;;;;;;
+;; Key well Walls ;;
+;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+; how far the walls are extruded from the key well (in x and y)
+(def wall-extrude 2)
+
+; length of the first downward-sloping part of the wall
+(def wall-z-depth -8)
+
+; ---
+
+(defn bottom-hull [& p]
+  (hull p (extrude-linear {:height 0.001 :twist 0 :convexity 0} (project p))))
+
+(defn wall-locate1 [dcol drow]
+  [(* dcol wall-thickness)
+   (* drow wall-thickness)
+   -1])
+(defn wall-locate2 [dcol drow]
+  [(* dcol wall-extrude)
+   (* drow wall-extrude)
+   wall-z-depth])
+(defn wall-locate3 [dcol drow]
+  [(* dcol (+ wall-extrude wall-thickness))
+   (* drow (+ wall-extrude wall-thickness))
+   wall-z-depth])
+
+(defn wall-brace [place1 dcol1 drow1 post1 place2 dcol2 drow2 post2]
+  (union
+   (hull
+    (place1 post1)
+    (place1 (translate (wall-locate1 dcol1 drow1) post1))
+    (place1 (translate (wall-locate2 dcol1 drow1) post1))
+    (place1 (translate (wall-locate3 dcol1 drow1) post1))
+    (place2 post2)
+    (place2 (translate (wall-locate1 dcol2 drow2) post2))
+    (place2 (translate (wall-locate2 dcol2 drow2) post2))
+    (place2 (translate (wall-locate3 dcol2 drow2) post2))
+    )
+   (bottom-hull
+    (place1 (translate (wall-locate2 dcol1 drow1) post1))
+    (place1 (translate (wall-locate3 dcol1 drow1) post1))
+    (place2 (translate (wall-locate2 dcol2 drow2) post2))
+    (place2 (translate (wall-locate3 dcol2 drow2) post2)))
+  ))
+
+(defn key-wall-brace [col1 row1 dcol1 drow1 post1 col2 row2 dcol2 drow2 post2]
+  (wall-brace (partial key-place col1 row1) dcol1 drow1 (post1 col1 row1)
+              (partial key-place col2 row2) dcol2 drow2 (post2 col2 row2)))
+
+(def walls
+  (let [lastcol (dec columns) lastrow (dec rows)]
+  (union
+         ; right wall keys
+         (for [row (range 0 lastrow)]
+           (key-wall-brace lastcol row       1 0 web-post-tr lastcol row 1 0 web-post-br))
+         ; right wall web
+         (for [row (range 1 lastrow)]
+           (key-wall-brace lastcol (dec row) 1 0 web-post-br lastcol row 1 0 web-post-tr))
+         ; back-right corner
+         (key-wall-brace lastcol 0 0 1 web-post-tr lastcol 0 1 0 web-post-tr)
+         ; left wall keys
+         (for [row (range 0 lastrow)]
+           (key-wall-brace 0 row       -1 0 web-post-tl 0 row -1 0 web-post-bl))
+         ; left wall web
+         (for [row (range 1 lastrow)]
+           (key-wall-brace 0 (dec row) -1 0 web-post-bl 0 row -1 0 web-post-tl))
+         ; back-left corner
+         (key-wall-brace 0 0 0 1 web-post-tl 0 0 -1 0 web-post-tl)
+         ; back wall keys
+         (for [col (range 0 columns)]
+           (key-wall-brace col 0 0 1 web-post-tl col       0 0 1 web-post-tr))
+         ; back wall web
+         (for [col (range 1 columns)]
+           (key-wall-brace col 0 0 1 web-post-tl (dec col) 0 0 1 web-post-tr))
+         ; front wall keys
+         ; skip first col (pinky corner) and last col (thumb corner)
+         (for [col (range 1 lastcol)]
+           (key-wall-brace col lastrow 0 -1 web-post-bl col       lastrow 0 -1 web-post-br))
+         ; front wall web
+         ; skip first col (pinky corner) and last col (thumb corner)
+         (for [col (range 2 lastcol)]
+           (key-wall-brace col lastrow 0 -1 web-post-bl (dec col) lastrow 0 -1 web-post-br))
+         ; front-left corner
+         ; spans across the missing pinky corner
+         (key-wall-brace 0 (dec lastrow) -1 0 web-post-bl 1 lastrow 0 -1 web-post-bl)
+         ; no front-right corner; that's where the thumb cluster will be
+         )))
+
+(spit "things/wall-visual.scad" (write-scad (union key-plates key-caps web-connectors walls)))
