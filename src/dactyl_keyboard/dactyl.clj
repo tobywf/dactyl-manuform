@@ -1,12 +1,13 @@
 (ns dactyl-keyboard.dactyl
     (:refer-clojure :exclude [use import])
-    (:require [clojure.core.matrix :refer [array matrix mmul]]
+    (:require [dactyl-keyboard.holders :refer :all]
               [scad-clj.scad :refer :all]
               [scad-clj.model :refer :all]))
 
 (def π pi)
 (defn deg2rad [degrees]
   (* (/ degrees 180) π))
+; (def z-fighting 0.01)
 
 ;;;;;;;;;;;;;;;;;
 ;; Conventions ;;
@@ -48,10 +49,10 @@
 (def plate-thickness 4)
 ; depth of the side nubs, this couldn't be bigger due to switch geometry
 (def side-nub-depth 4)
-; starting depth of the retention tab hole/cutout from the top of the plate
+; starting depth of the retention tab hole/cut-out from the top of the plate
 (def retention-start-depth 1.5)
 (def retention-hole-depth (- plate-thickness retention-start-depth))
-; width/height of the retention tab hole/cutout
+; width/height of the retention tab hole/cut-out
 (def retention-hole-size 5)
 
 (defn key-plate [holes? nubs? width-multiplier]
@@ -68,7 +69,7 @@
                            (translate [(+ (/ switch-hole-size 2.5))
                                        0
                                        ; shift up slightly to prevent z-fighting
-                                       (- (/ retention-hole-depth 2) 0.1)])
+                                       (- (/ retention-hole-depth 2) z-fighting)])
                            (rotate (/ π 2) [0 0 1]))
         ; calculations for plates wider than 1.0u
         ; the extra width to add to 1.0u (for 1.0u, this will be 0)
@@ -158,7 +159,7 @@
                (color [135/255 206/255 235/255 0.2])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Key well Placement Functions ;;
+;; Key Well Placement Functions ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; --- main options
@@ -217,13 +218,15 @@
         y (col-y-tweak col)
         ; finally, the tilt of each column to create a bowl-like key well
         β (deg2rad (col-tilt-deg col))]
-   (->> shape
+   (->> shape ; map the linear row position onto a circle/arc
               (translate [0 0 (- r)])
               (rotate (* row α) [1 0 0])
               (translate [0 0 r])
+              ; tilt the key
               (translate [0 0 (- plate-thickness)])
               (rotate β [0 1 0])
               (translate [0 0 plate-thickness])
+              ; add the simple translations
               (translate [x y z]))))
 
 ; TODO: parametrize me
@@ -242,7 +245,7 @@
 (spit "things/keywell-visual.scad" (write-scad (union key-plates key-caps)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Key well Web Connectors ;;
+;; Key Well Web Connectors ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; --- main options
@@ -446,7 +449,7 @@
 (spit "things/keywell-tester.scad" (write-scad (union test-plates web-connectors)))
 
 ;;;;;;;;;;;;;;;;;;;;
-;; Key well Walls ;;
+;; Key Well Walls ;;
 ;;;;;;;;;;;;;;;;;;;;
 
 ; --- main options
