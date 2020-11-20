@@ -1,7 +1,7 @@
 (ns dactyl-keyboard.holders
-    (:refer-clojure :exclude [use import])
-    (:require [scad-clj.scad :refer :all]
-              [scad-clj.model :refer :all]))
+  (:refer-clojure :exclude [use import])
+  (:require [scad-clj.scad :refer :all]
+            [scad-clj.model :refer :all]))
 
 ; a tiny offset to avoid z-fighting effect in OpenSCAD's preview. it seems
 ; silly, but makes iterating much easier because you can actually see the
@@ -115,9 +115,8 @@
                          (translate [0.0 plug-indent-y plug-indent-z]))
         plug-indent-right (translate [(/ trrs-jack-width 2) 0.0 0.0] plug-indent)
         plug-indent-left (translate [(/ trrs-jack-width -2) 0.0 0.0] plug-indent)
-        shape (difference shape plug-indent-right plug-indent-left)
-        ]
-   (translate trrs-housing-translate shape)))
+        shape (difference shape plug-indent-right plug-indent-left)]
+    (translate trrs-housing-translate shape)))
 
 (defn rounded-cylinder [r l]
   (let [l (- l r r)
@@ -125,7 +124,7 @@
         offset (/ l 2)
         cap-r (translate [0.0 0.0 offset] (sphere r))
         cap-l (translate [0.0 0.0 (- offset)] (sphere r))]
-  (union shape cap-r cap-l)))
+    (union shape cap-r cap-l)))
 
 (def trrs-plug
   (let [plug-y (- (+ trrs-jack-height (/ trrs-plug-height 2)))
@@ -158,13 +157,12 @@
         snap-left (mirror [1 0 0] snap-right)
         ; for strength, the plug needs to be printed lying on it's back, so the
         ; layer orientation in the legs shouldn't be stacked along the long axis
-        rotate-y (+ trrs-jack-height trrs-plug-height)
-        ]
-   (->> (union top snap-right snap-left)
-        (translate [0.0 rotate-y 0.0])
-        (rotate (/ pi 2) [1 0 0])
+        rotate-y (+ trrs-jack-height trrs-plug-height)]
+    (->> (union top snap-right snap-left)
+         (translate [0.0 rotate-y 0.0])
+         (rotate (/ pi 2) [1 0 0])
         ; offset it from the TRRS housing, don't apply the housing translation!
-        (translate [(- trrs-housing-width) (- 0.0 rotate-y 4.0) 0.0]))))
+         (translate [(- trrs-housing-width) (- 0.0 rotate-y 4.0) 0.0]))))
 
 (def trrs-cut-out
   (let [; the TRSS ring cut-out (sticking through the panel)
@@ -188,8 +186,7 @@
         front (->> (cube (+ trrs-jack-width 0.5)
                          (+ trrs-housing-wall 0.5)
                          (+ trrs-jack-depth 0.5))
-                   (translate [0 front-y (/ trrs-jack-depth 2)]))
-        ]
+                   (translate [0 front-y (/ trrs-jack-depth 2)]))]
     (->> (union ring cable-clear jack front)
          (translate trrs-housing-translate)
          (color cut-out-color))))
@@ -256,9 +253,8 @@
 
 (def pro-micro-housing-width (+ pro-micro-width (* usb-housing-wall 2)))
 (def pro-micro-housing-height (+ pro-micro-height
-                               usb-housing-wall
-                               usb-micro-cable-stickout))
-
+                                 usb-housing-wall
+                                 usb-micro-cable-stickout))
 
 (def elite-c-housing-translate [(/ elite-c-housing-width 2)
                                 (- (/ elite-c-height -2) usb-c-cable-stickout)
@@ -313,10 +309,9 @@
         hole-length (+ usb-housing-bottom-pad z-fighting)
         hole-y (+ (/ elite-c-height -2) 3.0)
         hole (->> (with-fn 30 (cylinder 2.0 hole-length :center false))
-                  (translate [0 hole-y (- hole-length)]))
-        ]
-   (->> (difference housing mcu header-left header-right wedge hole)
-        (translate elite-c-housing-translate))))
+                  (translate [0 hole-y (- hole-length)]))]
+    (->> (difference housing mcu header-left header-right wedge hole)
+         (translate elite-c-housing-translate))))
 
 (def elite-c-cut-out
   (let [; USB-C cut-out
@@ -340,14 +335,13 @@
                       (rotate (/ pi 2) [-1 0 0])
                       (translate [0 cable-clear-x usb-c-z]))
         cc-bottom (->> (cube 16.0 10.0 4.0)
-                    (translate [0 (+ cable-clear-x 5.0) (- z-fighting)]))
+                       (translate [0 (+ cable-clear-x 5.0) (- z-fighting)]))
         cable-clear (hull (translate [4.0 0 0] cc-round)
-                           (translate [-4.0 0 0] cc-round)
-                           cc-bottom)
-        ]
-   (->> (union usb-c cable-clear)
-        (translate elite-c-housing-translate)
-        (color cut-out-color))))
+                          (translate [-4.0 0 0] cc-round)
+                          cc-bottom)]
+    (->> (union usb-c cable-clear)
+         (translate elite-c-housing-translate)
+         (color cut-out-color))))
 
 (def pro-micro-housing
   (let [; the housing is symmetrical in x
@@ -392,10 +386,9 @@
         hole-length (+ usb-housing-bottom-pad z-fighting)
         hole-y (+ (/ pro-micro-height -2) 3.0)
         hole (->> (with-fn 30 (cylinder 2.0 hole-length :center false))
-                  (translate [0 hole-y (- hole-length)]))
-        ]
-   (->> (difference housing mcu header-left header-right wedge hole)
-        (translate pro-micro-housing-translate))))
+                  (translate [0 hole-y (- hole-length)]))]
+    (->> (difference housing mcu header-left header-right wedge hole)
+         (translate pro-micro-housing-translate))))
 
 (def pro-micro-cut-out
   (let [; Micro-USB cut-out
@@ -417,14 +410,13 @@
                       (rotate (/ pi 2) [-1 0 0])
                       (translate [0 cable-clear-x cable-clear-z]))
         cc-bottom (->> (cube 16.0 10.0 4.0)
-                    (translate [0 (+ cable-clear-x 5.0) (- z-fighting)]))
+                       (translate [0 (+ cable-clear-x 5.0) (- z-fighting)]))
         cable-clear (hull (translate [4.0 0 0] cc-round)
-                           (translate [-4.0 0 0] cc-round)
-                           cc-bottom)
-        ]
-   (->> (union usb-micro cable-clear)
-        (translate pro-micro-housing-translate)
-        (color cut-out-color))))
+                          (translate [-4.0 0 0] cc-round)
+                          cc-bottom)]
+    (->> (union usb-micro cable-clear)
+         (translate pro-micro-housing-translate)
+         (color cut-out-color))))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; USB Holder Panel ;;
@@ -472,9 +464,9 @@
                       trrs-plug
                       (translate [overlap 0 0] trrs-housing)
                       (translate [(- overlap) 0 0] elite-c-housing))]
-  (difference holder
-              (translate [overlap 0 0] trrs-cut-out)
-              (translate [(- overlap) 0 0] elite-c-cut-out))))
+    (difference holder
+                (translate [overlap 0 0] trrs-cut-out)
+                (translate [(- overlap) 0 0] elite-c-cut-out))))
 
 (spit "things/holder-elite-c.scad" (write-scad elite-c-holder))
 
@@ -497,8 +489,8 @@
                       trrs-plug
                       (translate [overlap 0 0] trrs-housing)
                       (translate [(- overlap) 0 0] pro-micro-housing))]
-  (difference holder
-              (translate [overlap 0 0] trrs-cut-out)
-              (translate [(- overlap) 0 0] pro-micro-cut-out))))
+    (difference holder
+                (translate [overlap 0 0] trrs-cut-out)
+                (translate [(- overlap) 0 0] pro-micro-cut-out))))
 
 (spit "things/holder-pro-micro.scad" (write-scad pro-micro-holder))
