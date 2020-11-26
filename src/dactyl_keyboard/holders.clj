@@ -18,7 +18,7 @@
 ;;;;;;;;;;;;;;;;;;;;;
 
 ; this is specifically modelled on the PJ-320A TRRS jack. the jack is meant to
-; be slide in from the top with the pins facing upwards, and then a plug is
+; be slide in from the top with the pins facing upwards, and then a breech is
 ; inserted to hold it in place. you may need to remove the front PCB spacing
 ; nub on the bottom of the jack (near the front electrical pin)
 
@@ -46,14 +46,14 @@
 (def trrs-housing-wall 2.0)
 ; some extra padding on the bottom (in addition to a wall)
 (def trrs-housing-bottom-pad trrs-housing-wall)
-; a plug to hold the jack in place
-(def trrs-plug-height (* trrs-housing-wall 2))
-; the plug's indent radius
-(def trrs-plug-indent 0.6)
-; clearance of the plug's indent, and also (ab)used for other features
-(def trrs-plug-clear 0.1)
-; width of the plug's cut-outs for the electrical pins
-(def trrs-plug-pin-space 1.5)
+; a breech to hold the jack in place
+(def trrs-breech-height (* trrs-housing-wall 2))
+; the breech's indent radius
+(def trrs-breech-indent 0.6)
+; clearance of the breech's indent, and also (ab)used for other features
+(def trrs-breech-clear 0.1)
+; width of the breech's cut-outs for the electrical pins
+(def trrs-breech-pin-space 1.5)
 ; radius of the cable cut-out, only used if the panel is thicker than the ring
 (def trrs-cable-cut-out-radius 4.5)
 ; length of the cable cut-out, arbitrary
@@ -65,7 +65,7 @@
 ; housing only includes one wall, the other is the panel
 (def trrs-housing-height (+ trrs-jack-height
                             trrs-housing-wall
-                            trrs-plug-height))
+                            trrs-breech-height))
 (def trrs-housing-depth (+ trrs-jack-depth
                            trrs-housing-wall
                            trrs-housing-bottom-pad))
@@ -91,32 +91,16 @@
                            trrs-housing-depth
                            :center false)
                      (translate [housing-x housing-y housing-z]))
-        ; cut-out for the TRRS jack (without the ring), plus the plug
-        body-height (+ trrs-jack-height trrs-plug-height)
-        body (->> (cube (+ trrs-jack-width z-fighting)
-                        (+ body-height z-fighting)
-                        (+ trrs-jack-depth z-fighting))
-                  (translate [0.0 (/ body-height -2) (/ trrs-jack-depth 2)]))
-        shape (difference housing body)
         ; back support/lip
-        back-stop-y (- (+ body-height (/ trrs-housing-wall 2)))
+        back-stop-y (- (+ trrs-jack-height
+                          trrs-breech-height
+                          (/ trrs-housing-wall 2)))
         back-stop-z (+ trrs-jack-depth (/ trrs-housing-wall 2))
         back-stop (->> (cube trrs-housing-width
                              trrs-housing-wall
                              trrs-housing-wall)
-                       (translate [0.0 back-stop-y back-stop-z]))
-        shape (union shape back-stop)
-        ; plug/snap retaining indents
-        plug-indent-r (+ trrs-plug-indent trrs-plug-clear)
-        plug-indent-y (- (+ trrs-jack-height (/ trrs-plug-height 2)))
-        plug-indent-z (+ plug-indent-r 1.0)
-        plug-indent (->> (with-fn 30 (cylinder plug-indent-r trrs-plug-height))
-                         (rotate (/ pi 2) [1 0 0])
-                         (translate [0.0 plug-indent-y plug-indent-z]))
-        plug-indent-right (translate [(/ trrs-jack-width 2) 0.0 0.0] plug-indent)
-        plug-indent-left (translate [(/ trrs-jack-width -2) 0.0 0.0] plug-indent)
-        shape (difference shape plug-indent-right plug-indent-left)]
-    (translate trrs-housing-translate shape)))
+                       (translate [0.0 back-stop-y back-stop-z]))]
+    (translate trrs-housing-translate (union housing back-stop))))
 
 (defn rounded-cylinder [r l]
   (let [l (- l r r)
@@ -126,39 +110,40 @@
         cap-l (translate [0.0 0.0 (- offset)] (sphere r))]
     (union shape cap-r cap-l)))
 
-(def trrs-plug
-  (let [plug-y (- (+ trrs-jack-height (/ trrs-plug-height 2)))
+(def trrs-breech
+  (let [breech-y (- (+ trrs-jack-height (/ trrs-breech-height 2)))
         ; extend the top to add some overhang to stop the jack rotating up
-        top-height (+ trrs-plug-height trrs-housing-wall)
+        top-height (+ trrs-breech-height trrs-housing-wall)
         top-z (+ trrs-jack-depth (/ trrs-housing-wall 2))
         top (->> (cube trrs-housing-width top-height trrs-housing-wall)
-                 (translate [0.0 (+ plug-y (/ trrs-housing-wall 2)) top-z]))
+                 (translate [0.0 (+ breech-y (/ trrs-housing-wall 2)) top-z]))
         ; cut out for the electrical pins at the back of the jack
         pin-depth (+ trrs-housing-wall z-fighting)
-        pin-x (/ (- trrs-jack-width trrs-plug-pin-space) 2)
+        pin-x (/ (- trrs-jack-width trrs-breech-pin-space) 2)
         pin-y (+ (- trrs-jack-height) (/ trrs-housing-wall 2) z-fighting)
-        pin-right (->> (cube trrs-plug-pin-space trrs-housing-wall pin-depth)
+        pin-right (->> (cube trrs-breech-pin-space trrs-housing-wall pin-depth)
                        (translate [pin-x pin-y top-z]))
         pin-left (mirror [1 0 0] pin-right)
         top (difference top pin-right pin-left)
         ; the snaps are legs with indents that flex a bit, and need a bit of
         ; clearance around all features
-        snap-x (- (/ (- trrs-jack-width 1.0) 2) trrs-plug-clear)
-        snap-z (+ (/ trrs-jack-depth 2) trrs-plug-clear)
-        snap-leg (->> (cube 1.0 trrs-plug-height trrs-jack-depth)
-                      (translate [snap-x plug-y snap-z]))
-        snap-indent (->> (with-fn 30 (rounded-cylinder trrs-plug-indent
-                                                       trrs-plug-height))
+        snap-x (- (/ (- trrs-jack-width 1.0) 2) trrs-breech-clear)
+        snap-z (+ (/ trrs-jack-depth 2) trrs-breech-clear)
+        snap-leg (->> (cube 1.0 trrs-breech-height trrs-jack-depth)
+                      (translate [snap-x breech-y snap-z]))
+        snap-indent (->> (with-fn 30 (rounded-cylinder trrs-breech-indent
+                                                       trrs-breech-height))
                          (rotate (/ pi 2) [1 0 0])
-                         (translate [(+ snap-x trrs-plug-indent (- trrs-plug-clear))
-                                     plug-y
-                                     (+ trrs-plug-indent 1.0)]))
-        snap-right (union snap-leg snap-indent)
-        snap-left (mirror [1 0 0] snap-right)
-        ; for strength, the plug needs to be printed lying on it's back, so the
-        ; layer orientation in the legs shouldn't be stacked along the long axis
-        rotate-y (+ trrs-jack-height trrs-plug-height)]
-    (->> (union top snap-right snap-left)
+                         (translate [(+ snap-x trrs-breech-indent
+                                        (- trrs-breech-clear))
+                                     breech-y
+                                     (+ trrs-breech-indent 1.0)]))
+        snap-r (union snap-leg snap-indent)
+        snap-l (mirror [1 0 0] snap-r)
+        ; for strength, the breech is printed lying on it's back, so the layer
+        ; orientation in the legs isn't stacked along the long axis
+        rotate-y (+ trrs-jack-height trrs-breech-height)]
+    (->> (union top snap-r snap-l)
          (translate [0.0 rotate-y 0.0])
          (rotate (/ pi 2) [1 0 0])
         ; offset it from the TRRS housing, don't apply the housing translation!
@@ -177,17 +162,32 @@
                                                trrs-cable-cut-out-length
                                                :center false))
                          (rotate (/ pi 2) [-1 0 0])
-                         (translate [0 cable-clear-y ring-radius]))
-        ; the TRRS jack cut-out
-        jack (->> (cube trrs-jack-width trrs-jack-height trrs-jack-depth)
-                  (translate [0 (/ trrs-jack-height -2) (/ trrs-jack-depth 2)]))
+                         (translate [0.0 cable-clear-y ring-radius]))
+        ; cut-out for the TRRS jack (without the ring), plus the breech
+        jack-height (+ trrs-jack-height trrs-breech-height)
+        jack (->> (cube (+ trrs-jack-width z-fighting)
+                        (+ jack-height z-fighting)
+                        (+ trrs-jack-depth z-fighting))
+                  (translate [0.0 (/ jack-height -2) (/ trrs-jack-depth 2)]))
+        ; breech/snap retaining indents (since the walls might intersect)
+        breech-indent-r (+ trrs-breech-indent trrs-breech-clear)
+        breech-indent-y (- (+ trrs-jack-height (/ trrs-breech-height 2)))
+        breech-indent-z (+ breech-indent-r 1.0)
+        breech-indent (->> (with-fn 30 (cylinder breech-indent-r
+                                                 trrs-breech-height))
+                           (rotate (/ pi 2) [1 0 0])
+                           (translate [0.0 breech-indent-y breech-indent-z]))
+        breech-indent-r (translate [(/ trrs-jack-width 2) 0.0 0.0]
+                                   breech-indent)
+        breech-indent-l (translate [(/ trrs-jack-width -2) 0.0 0.0]
+                                   breech-indent)
         ; some clearance at the front, slightly larger than the jack body
         front-y (- (/ trrs-housing-wall -2) z-fighting)
         front (->> (cube (+ trrs-jack-width 0.5)
                          (+ trrs-housing-wall 0.5)
                          (+ trrs-jack-depth 0.5))
-                   (translate [0 front-y (/ trrs-jack-depth 2)]))]
-    (->> (union ring cable-clear jack front)
+                   (translate [0.0 front-y (/ trrs-jack-depth 2)]))]
+    (->> (union ring cable-clear jack front breech-indent-r breech-indent-l)
          (translate trrs-housing-translate)
          (color cut-out-color))))
 
@@ -282,14 +282,14 @@
         ; the micro-controller (without the USB connector)
         mcu-depth (+ usb-housing-inner-depth z-fighting)
         mcu (->> (cube elite-c-width elite-c-height mcu-depth)
-                 (translate [0 0 (/ usb-housing-inner-depth 2)]))
+                 (translate [0.0 0.0 (/ usb-housing-inner-depth 2)]))
         ; header cut-outs
         header-depth (+ usb-housing-bottom-pad z-fighting)
         header-x (/ (- elite-c-width usb-housing-header-cut-out) 2)
         header-z (/ usb-housing-bottom-pad -2)
         header (cube usb-housing-header-cut-out elite-c-height header-depth)
-        header-left (translate [(- header-x) 0 header-z] header)
-        header-right (translate [header-x 0 header-z] header)
+        header-l (translate [(- header-x) 0.0 header-z] header)
+        header-r (translate [header-x 0.0 header-z] header)
         ; the wedge cut-out is a triangular prism, to allow angled insertion.
         wedge-height (/ usb-housing-wall 2)
         wedge-depth (- usb-housing-inner-depth usb-housing-wall)
@@ -309,8 +309,8 @@
         hole-length (+ usb-housing-bottom-pad z-fighting)
         hole-y (+ (/ elite-c-height -2) 3.0)
         hole (->> (with-fn 30 (cylinder 2.0 hole-length :center false))
-                  (translate [0 hole-y (- hole-length)]))]
-    (->> (difference housing mcu header-left header-right wedge hole)
+                  (translate [0.0 hole-y (- hole-length)]))]
+    (->> (difference housing mcu header-l header-r wedge hole)
          (translate elite-c-housing-translate))))
 
 (def elite-c-cut-out
@@ -326,18 +326,18 @@
                                               usb-c-length
                                               :center false))
                         (rotate (/ pi 2) [-1 0 0])
-                        (translate [0 usb-c-y usb-c-z]))
-        usb-c (hull (translate [usb-c-x 0 0] usb-c-part)
-                    (translate [(- usb-c-x) 0 0] usb-c-part))
+                        (translate [0.0 usb-c-y usb-c-z]))
+        usb-c (hull (translate [usb-c-x 0.0 0.0] usb-c-part)
+                    (translate [(- usb-c-x) 0.0 0.0] usb-c-part))
         ; cable clearance cut-out, punch through the panel
         cable-clear-x (+ usb-c-y usb-c-cable-stickout)
         cc-round (->> (with-fn 30 (cylinder 4.0 10.0 :center false))
                       (rotate (/ pi 2) [-1 0 0])
-                      (translate [0 cable-clear-x usb-c-z]))
+                      (translate [0.0 cable-clear-x usb-c-z]))
         cc-bottom (->> (cube 16.0 10.0 4.0)
-                       (translate [0 (+ cable-clear-x 5.0) (- z-fighting)]))
-        cable-clear (hull (translate [4.0 0 0] cc-round)
-                          (translate [-4.0 0 0] cc-round)
+                       (translate [0.0 (+ cable-clear-x 5.0) (- z-fighting)]))
+        cable-clear (hull (translate [4.0 0.0 0.0] cc-round)
+                          (translate [-4.0 0.0 0.0] cc-round)
                           cc-bottom)]
     (->> (union usb-c cable-clear)
          (translate elite-c-housing-translate)
@@ -359,14 +359,14 @@
         ; the micro-controller (without the USB connector)
         mcu-depth (+ usb-housing-inner-depth z-fighting)
         mcu (->> (cube pro-micro-width pro-micro-height mcu-depth)
-                 (translate [0 0 (/ usb-housing-inner-depth 2)]))
+                 (translate [0.0 0.0 (/ usb-housing-inner-depth 2)]))
         ; header cut-outs
         header-depth (+ usb-housing-bottom-pad z-fighting)
         header-x (/ (- pro-micro-width usb-housing-header-cut-out) 2)
         header-z (/ usb-housing-bottom-pad -2)
         header (cube usb-housing-header-cut-out pro-micro-height header-depth)
-        header-left (translate [(- header-x) 0 header-z] header)
-        header-right (translate [header-x 0 header-z] header)
+        header-l (translate [(- header-x) 0.0 header-z] header)
+        header-r (translate [header-x 0.0 header-z] header)
         ; the wedge cut-out is a triangular prism, to allow angled insertion.
         wedge-height (/ usb-housing-wall 2)
         wedge-depth (- usb-housing-inner-depth usb-housing-wall)
@@ -386,8 +386,8 @@
         hole-length (+ usb-housing-bottom-pad z-fighting)
         hole-y (+ (/ pro-micro-height -2) 3.0)
         hole (->> (with-fn 30 (cylinder 2.0 hole-length :center false))
-                  (translate [0 hole-y (- hole-length)]))]
-    (->> (difference housing mcu header-left header-right wedge hole)
+                  (translate [0.0 hole-y (- hole-length)]))]
+    (->> (difference housing mcu header-l header-r wedge hole)
          (translate pro-micro-housing-translate))))
 
 (def pro-micro-cut-out
@@ -408,11 +408,11 @@
         cable-clear-z (+ usb-micro-z 2.0)
         cc-round (->> (with-fn 30 (cylinder 4.0 10.0 :center false))
                       (rotate (/ pi 2) [-1 0 0])
-                      (translate [0 cable-clear-x cable-clear-z]))
+                      (translate [0.0 cable-clear-x cable-clear-z]))
         cc-bottom (->> (cube 16.0 10.0 4.0)
-                       (translate [0 (+ cable-clear-x 5.0) (- z-fighting)]))
-        cable-clear (hull (translate [4.0 0 0] cc-round)
-                          (translate [-4.0 0 0] cc-round)
+                       (translate [0.0 (+ cable-clear-x 5.0) (- z-fighting)]))
+        cable-clear (hull (translate [4.0 0.0 0.0] cc-round)
+                          (translate [-4.0 0.0 0.0] cc-round)
                           cc-bottom)]
     (->> (union usb-micro cable-clear)
          (translate pro-micro-housing-translate)
@@ -432,6 +432,11 @@
 (def usb-housing-panel-depth 20.0)
 (def usb-housing-panel-rail 1.0)
 
+; the padding around the panel in the slot/wall/cut-out
+(def usb-holder-slot-padding 4.0)
+; the clearance between the panel and the slot/wall/cut-out
+(def usb-housing-panel-clearance 0.2)
+
 ; ---
 
 ; overlap the right TRRS housing wall and the left USB housing wall
@@ -445,6 +450,8 @@
 (assert (> elite-c-diff-width 0.0) "Elite-C holder would be too wide")
 (assert (> pro-micro-diff-width 0.0) "Pro-Micro holder would be too wide")
 
+(def usb-housing-height (max elite-c-housing-height pro-micro-housing-height))
+
 (def elite-c-holder
   (let [overlap (- (/ usb-housing-overlap 2) z-fighting)
         panel-y (/ usb-housing-panel-height -2)
@@ -452,21 +459,23 @@
                          usb-housing-panel-height
                          usb-housing-panel-depth
                          :center false)
-                   (translate [(- trrs-housing-width) panel-y 0]))
+                   (translate [(- trrs-housing-width) panel-y 0.0]))
         rail (with-fn 30 (cylinder usb-housing-panel-rail
                                    usb-housing-panel-depth
                                    :center false))
-        rail-right (translate [(- usb-housing-panel-width trrs-housing-width) 0 0] rail)
-        rail-left (translate [(- trrs-housing-width) 0 0] rail)
+        rail-r-x (- usb-housing-panel-width trrs-housing-width)
+        rail-l-x (- trrs-housing-width)
+        rail-r (translate [rail-r-x 0.0 0.0] rail)
+        rail-l (translate [rail-l-x 0.0 0.0] rail)
         holder (union panel
-                      rail-right
-                      rail-left
-                      trrs-plug
-                      (translate [overlap 0 0] trrs-housing)
-                      (translate [(- overlap) 0 0] elite-c-housing))]
+                      rail-r
+                      rail-l
+                      trrs-breech
+                      (translate [overlap 0.0 0.0] trrs-housing)
+                      (translate [(- overlap) 0.0 0.0] elite-c-housing))]
     (difference holder
-                (translate [overlap 0 0] trrs-cut-out)
-                (translate [(- overlap) 0 0] elite-c-cut-out))))
+                (translate [overlap 0.0 0.0] trrs-cut-out)
+                (translate [(- overlap) 0.0 0.0] elite-c-cut-out))))
 
 (spit "things/holder-elite-c.scad" (write-scad elite-c-holder))
 
@@ -477,20 +486,50 @@
                          usb-housing-panel-height
                          usb-housing-panel-depth
                          :center false)
-                   (translate [(- trrs-housing-width) panel-y 0]))
+                   (translate [(- trrs-housing-width) panel-y 0.0]))
         rail (with-fn 30 (cylinder usb-housing-panel-rail
                                    usb-housing-panel-depth
                                    :center false))
-        rail-right (translate [(- usb-housing-panel-width trrs-housing-width) 0 0] rail)
-        rail-left (translate [(- trrs-housing-width) 0 0] rail)
+        rail-r-x (- usb-housing-panel-width trrs-housing-width)
+        rail-l-x (- trrs-housing-width)
+        rail-r (translate [rail-r-x 0.0 0.0] rail)
+        rail-l (translate [rail-l-x 0.0 0.0] rail)
         holder (union panel
-                      rail-right
-                      rail-left
-                      trrs-plug
-                      (translate [overlap 0 0] trrs-housing)
-                      (translate [(- overlap) 0 0] pro-micro-housing))]
+                      rail-r
+                      rail-l
+                      trrs-breech
+                      (translate [overlap 0.0 0.0] trrs-housing)
+                      (translate [(- overlap) 0.0 0.0] pro-micro-housing))]
     (difference holder
-                (translate [overlap 0 0] trrs-cut-out)
-                (translate [(- overlap) 0 0] pro-micro-cut-out))))
+                (translate [overlap 0.0 0.0] trrs-cut-out)
+                (translate [(- overlap) 0.0 0.0] pro-micro-cut-out))))
 
 (spit "things/holder-pro-micro.scad" (write-scad pro-micro-holder))
+
+(def usb-holder-wall
+  (let [wall-width (+ usb-housing-panel-width (* usb-holder-slot-padding 2))
+        wall-depth (+ usb-housing-panel-depth usb-holder-slot-padding)]
+    (->> (cube wall-width
+               usb-housing-panel-height
+               wall-depth)
+         (translate [0.0 0.0 (/ wall-depth 2)]))))
+
+(def usb-holder-slot
+  (let [clearance (* usb-housing-panel-clearance 2)
+        ; it's good to have a bit more clearance in z, so this doubles it (again)
+        slot-depth (* (+ usb-housing-panel-depth clearance) 2)
+        panel (cube (+ usb-housing-panel-width clearance)
+                    ; clear space in x of both sides of the wall/panel
+                    (* usb-housing-height 2)
+                    slot-depth)
+        rail-radius (+ usb-housing-panel-rail usb-housing-panel-clearance)
+        rail (with-fn 30 (cylinder rail-radius slot-depth))
+        rail-offset (/ usb-housing-panel-width 2)
+        rail-r (translate [rail-offset 0.0 0.0] rail)
+        rail-l (translate [(- rail-offset) 0.0 0.0] rail)]
+    (union panel rail-r rail-l)))
+
+; can be printed lying on the side; but bottom to top is like it'll be in the
+; keyboard
+(spit "things/holder-wall-tester.scad"
+      (write-scad (rotate pi [1 0 0] (difference usb-holder-wall usb-holder-slot))))
