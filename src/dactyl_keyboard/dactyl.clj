@@ -226,6 +226,27 @@
               ; add the simple translations
          (translate [x y z]))))
 
+(defn key-project [col row]
+  (let [; invert row, so row 0 is at the front (y positive) and row 5 is at the
+        ; back (y negative)
+        row (- row-center row)
+        ; x is grid spacing, but because of the tilt it may need a tweak
+        x (+ (* col col-spaced) (col-x-tweak col))
+        ; z is easy, too
+        z (- col-z-offset (col-depth col))
+        ; y is harder - want to map the linear row position onto a circle/arc
+        α (col-angle col)
+        r (col-radius col)
+        y-base (col-y-tweak col)
+        ; finally, the tilt of each column to create a bowl-like key well
+        β (deg2rad (col-tilt-deg col))
+        ; map the linear row position onto a circle/arc
+        y-rot (* (Math/sin (* row α)) r)
+        ; we can sort of ignore the tilt for the projection, since it's simply
+        ; a rotation of the switch hole with a relatively small angle/radius
+        ]
+    [x (+ y-base y-rot) 0]))
+
 ; TODO: parametrize me
 (defn place-all [shape]
   (apply union
@@ -536,4 +557,28 @@
          ; no front-right corner; that's where the thumb cluster will be
      )))
 
-(spit "things/wall-visual.scad" (write-scad (union key-plates key-caps web-connectors walls)))
+;;;;;;;;;;;;;;;;;;;;;;;;
+;; USB Holder Cut-out ;;
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+(def holder-x-offset 0.0)
+(def holder-y-offset (+ (/ keycap-size 2) (/ wall-extrude 2) wall-thickness))
+
+; ---
+
+(def usb-holder-wall-translate
+  (->> usb-holder-wall
+       (translate (key-project (- columns 2) 0.0))
+       (translate [holder-x-offset holder-y-offset 0.0])))
+(def usb-holder-slot-translate
+  (->> usb-holder-slot
+       (translate (key-project (- columns 2) 0.0))
+       (translate [holder-x-offset holder-y-offset 0.0])))
+
+(def walls (difference (union walls usb-holder-wall-translate)
+                       usb-holder-slot-translate))
+
+(spit "things/wall-visual.scad"
+      (write-scad (union key-plates key-caps web-connectors walls)))
