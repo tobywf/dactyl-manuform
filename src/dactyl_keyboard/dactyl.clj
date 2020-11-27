@@ -4,9 +4,8 @@
             [scad-clj.scad :refer :all]
             [scad-clj.model :refer :all]))
 
-(def π pi)
 (defn deg2rad [degrees]
-  (* (/ degrees 180) π))
+  (* (/ degrees 180) pi))
 ; (def z-fighting 0.01)
 
 ;;;;;;;;;;;;;;;;;
@@ -46,19 +45,19 @@
 (def keycap-size (+ switch-hole-size (* wall-thickness 2)))
 ; depth of the switch hole - 4mm is really the minimum for side nubs to work,
 ; 5mm is possible but might make soldering tricky. print the plate tester!
-(def plate-thickness 4)
+(def plate-thickness 4.0)
 ; depth of the side nubs, this couldn't be bigger due to switch geometry
-(def side-nub-depth 4)
+(def side-nub-depth 4.0)
 ; starting depth of the retention tab hole/cut-out from the top of the plate
 (def retention-start-depth 1.5)
 (def retention-hole-depth (- plate-thickness retention-start-depth))
 ; width/height of the retention tab hole/cut-out
-(def retention-hole-size 5)
+(def retention-hole-size 5.0)
 
 (defn key-plate [holes? nubs? width-multiplier]
   (let [; wall with hole for switch's retention tab
         top-wall (->> (cube keycap-size wall-thickness plate-thickness)
-                      (translate [0
+                      (translate [0.0
                                   (+ (/ wall-thickness 2) (/ switch-hole-size 2))
                                   (/ plate-thickness 2)]))
         ; hole for switch's retention tab
@@ -66,10 +65,10 @@
                                   retention-hole-size
                                   retention-hole-depth)
                             (translate [(+ (/ switch-hole-size 2.5))
-                                        0
+                                        0.0
                                        ; shift up slightly to prevent z-fighting
                                         (- (/ retention-hole-depth 2) z-fighting)])
-                            (rotate (/ π 2) [0 0 1]))
+                            (rotate (/ pi 2) [0 0 1]))
         ; calculations for plates wider than 1.0u
         ; the extra width to add to 1.0u (for 1.0u, this will be 0)
         plate-extra-width (* (/ keycap-size 2) (- width-multiplier 1))
@@ -81,17 +80,17 @@
                              (+ switch-hole-size (* wall-thickness 2))
                              plate-thickness)
                        (translate [(+ (/ left-wall-width 2) (/ switch-hole-size 2))
-                                   0
+                                   0.0
                                    (/ plate-thickness 2)]))
         ; side nub (wedge and rounded bottom)
-        side-nub (->> (binding [*fn* 30] (cylinder 1 2.75))
-                      (rotate (/ π 2) [1 0 0])
+        side-nub (->> (with-fn 30 (cylinder 1.0 2.75))
+                      (rotate (/ pi 2) [1 0 0])
                       (translate [(+ (/ switch-hole-size 2)) 0 1])
                       (hull (->> (cube 1.5 2.75 side-nub-depth)
                                  (translate [(+ (/ 1.5 2) (/ switch-hole-size 2))
-                                             0
+                                             0.0
                                              (/ side-nub-depth 2)])))
-                      (translate [0 0 (- plate-thickness side-nub-depth)]))
+                      (translate [0.0 0.0 (- plate-thickness side-nub-depth)]))
         top-wall (if holes? (difference top-wall retention-hole) top-wall)
         left-wall (if nubs? (union left-wall side-nub) left-wall)
         plate-half (union top-wall left-wall)]
@@ -112,13 +111,13 @@
 
 ; the plate tester is to quickly print the switch holes and check switches fit
 (def plate-tester
-  (->> (union (->> one-half-plate (translate [0 -20 0]))
-              (->> single-plate (translate [10 0 0]))
-              (->> one-quater-plate (translate [-13 0 0]))
-              (->> double-plate (translate [0 20 0])))
+  (->> (union (->> one-half-plate (translate [0.0 -20.0 0.0]))
+              (->> single-plate (translate [10.0 0.0 0.0]))
+              (->> one-quater-plate (translate [-13.0 0.0 0.0]))
+              (->> double-plate (translate [0.0 20.0 0.0])))
        ; flip the plates on their head for easier printing (no supports)
        (mirror [0 0 1])
-       (translate [0 0 plate-thickness])))
+       (translate [0.0 0.0 plate-thickness])))
 (spit "things/plate-tester.scad" (write-scad plate-tester))
 
 ;;;;;;;;;;;;;
@@ -135,7 +134,7 @@
 
 ; --- geometry options
 
-(def keycap-face-size 12) ; only affects key cap rendering, nothing else
+(def keycap-face-size 12.0) ; only affects key cap rendering, nothing else
 
 (defn key-cap [width-multiplier]
   (let [cap-width (* keycap-size width-multiplier)
@@ -144,16 +143,16 @@
         face-width (- cap-width face-diff)
         cap (hull (->> (square cap-width keycap-size)
                        (extrude-linear {:height 0.1 :twist 0 :convexity 0})
-                       (translate [0 0 0.05]))
+                       (translate [0.0 0.0 0.05]))
                   (->> (square face-width keycap-face-size)
                        (extrude-linear {:height 0.1 :twist 0 :convexity 0})
                        (translate [0 0 keycap-profile-depth])))
         push (cube cap-width keycap-size switch-depth)]
     (union (->> cap
-                (translate [0 0 (+ plate-thickness switch-depth)])
+                (translate [0.0 0.0 (+ plate-thickness switch-depth)])
                 (color [220/255 163/255 163/255 1.0]))
            (->> push
-                (translate [0 0 (+ plate-thickness (/ switch-depth 2))])
+                (translate [0.0 0.0 (+ plate-thickness (/ switch-depth 2))])
                 (color [135/255 206/255 235/255 0.2])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -185,7 +184,7 @@
 ; this is subtracted, so higher values means deeper/lower
 (def col-depth [22 22 20 20 12 5])
 ; a general depth/z offset, to adjust keys up after col-depth was applied
-(def col-z-offset 30)
+(def col-z-offset 30.0)
 ; the tilt of each column in degrees
 (def col-tilt-deg [0 -5 -10 -10 -18 -28])
 ; small tweak to column spacing - useful to compensate for large differences
@@ -215,15 +214,16 @@
         y (col-y-tweak col)
         ; finally, the tilt of each column to create a bowl-like key well
         β (deg2rad (col-tilt-deg col))]
-    (->> shape ; map the linear row position onto a circle/arc
-         (translate [0 0 (- r)])
+    (->> shape
+         ; map the linear row position onto a circle/arc
+         (translate [0.0 0.0 (- r)])
          (rotate (* row α) [1 0 0])
-         (translate [0 0 r])
-              ; tilt the key
-         (translate [0 0 (- plate-thickness)])
+         (translate [0.0 0.0 r])
+         ; tilt the key
+         (translate [0.0 0.0 (- plate-thickness)])
          (rotate β [0 1 0])
-         (translate [0 0 plate-thickness])
-              ; add the simple translations
+         (translate [0.0 0.0 plate-thickness])
+         ; add the simple translations
          (translate [x y z]))))
 
 (defn key-project [col row]
@@ -245,7 +245,7 @@
         ; we can sort of ignore the tilt for the projection, since it's simply
         ; a rotation of the switch hole with a relatively small angle/radius
         ]
-    [x (+ y-base y-rot) 0]))
+    [x (+ y-base y-rot) 0.0]))
 
 ; TODO: parametrize me
 (defn place-all [shape]
@@ -277,7 +277,9 @@
 (def post-size 0.1)
 (def post-adj (/ post-size 2))
 (def web-post (->> (cube post-size post-size web-thickness)
-                   (translate [0 0 (+ (/ web-thickness -2) plate-thickness)])))
+                   (translate [0.0
+                               0.0
+                               (+ (/ web-thickness -2) plate-thickness)])))
 
 ; ---
 
@@ -285,17 +287,25 @@
 ; now, but i had planned to also generate support material
 
 (defn post-tr [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))]
-    (translate [(- (/ keycap-width 2) post-adj) (- (/ keycap-size 2) post-adj) 0] shape)))
+  (let [keycap-width (* keycap-size (shape-width col row))
+        x (- (/ keycap-width 2) post-adj)
+        y (- (/ keycap-size 2) post-adj)]
+    (translate [x y 0.0] shape)))
 (defn post-tl [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))]
-    (translate [(+ (/ keycap-width -2) post-adj) (- (/ keycap-size 2) post-adj) 0] shape)))
+  (let [keycap-width (* keycap-size (shape-width col row))
+        x (+ (/ keycap-width -2) post-adj)
+        y (- (/ keycap-size 2) post-adj)]
+    (translate [x y 0.0] shape)))
 (defn post-bl [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))]
-    (translate [(+ (/ keycap-width -2) post-adj) (+ (/ keycap-size -2) post-adj) 0] shape)))
+  (let [keycap-width (* keycap-size (shape-width col row))
+        x (+ (/ keycap-width -2) post-adj)
+        y (+ (/ keycap-size -2) post-adj)]
+    (translate [x y 0.0] shape)))
 (defn post-br [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))]
-    (translate [(- (/ keycap-width 2) post-adj) (+ (/ keycap-size -2) post-adj) 0] shape)))
+  (let [keycap-width (* keycap-size (shape-width col row))
+        x (- (/ keycap-width 2) post-adj)
+        y (+ (/ keycap-size -2) post-adj)]
+    (translate [x y 0.0] shape)))
 
 (def web-post-tr (partial post-tr web-post))
 (def web-post-tl (partial post-tl web-post))
@@ -474,10 +484,10 @@
 ; --- main options
 
 ; how far the walls are extruded from the key well (in x and y)
-(def wall-extrude 2)
+(def wall-extrude 2.0)
 
 ; length of the first downward-sloping part of the wall
-(def wall-z-depth -8)
+(def wall-z-depth -8.0)
 
 ; ---
 
@@ -487,7 +497,7 @@
 (defn wall-locate1 [dcol drow]
   [(* dcol wall-thickness)
    (* drow wall-thickness)
-   -1])
+   -1.0])
 (defn wall-locate2 [dcol drow]
   [(* dcol wall-extrude)
    (* drow wall-extrude)
@@ -521,40 +531,40 @@
 (def walls
   (let [lastcol (dec columns) lastrow (dec rows)]
     (union
-         ; right wall keys
+     ; right wall keys
      (for [row (range 0 lastrow)]
        (key-wall-brace lastcol row       1 0 web-post-tr lastcol row 1 0 web-post-br))
-         ; right wall web
+     ; right wall web
      (for [row (range 1 lastrow)]
        (key-wall-brace lastcol (dec row) 1 0 web-post-br lastcol row 1 0 web-post-tr))
-         ; back-right corner
+     ; back-right corner
      (key-wall-brace lastcol 0 0 1 web-post-tr lastcol 0 1 0 web-post-tr)
-         ; left wall keys
+     ; left wall keys
      (for [row (range 0 lastrow)]
        (key-wall-brace 0 row       -1 0 web-post-tl 0 row -1 0 web-post-bl))
-         ; left wall web
+     ; left wall web
      (for [row (range 1 lastrow)]
        (key-wall-brace 0 (dec row) -1 0 web-post-bl 0 row -1 0 web-post-tl))
-         ; back-left corner
+     ; back-left corner
      (key-wall-brace 0 0 0 1 web-post-tl 0 0 -1 0 web-post-tl)
-         ; back wall keys
+     ; back wall keys
      (for [col (range 0 columns)]
        (key-wall-brace col 0 0 1 web-post-tl col       0 0 1 web-post-tr))
-         ; back wall web
+     ; back wall web
      (for [col (range 1 columns)]
        (key-wall-brace col 0 0 1 web-post-tl (dec col) 0 0 1 web-post-tr))
-         ; front wall keys
-         ; skip first col (pinky corner) and last col (thumb corner)
+     ; front wall keys
+     ; skip first col (pinky corner) and last col (thumb corner)
      (for [col (range 1 lastcol)]
        (key-wall-brace col lastrow 0 -1 web-post-bl col       lastrow 0 -1 web-post-br))
-         ; front wall web
-         ; skip first col (pinky corner) and last col (thumb corner)
+     ; front wall web
+     ; skip first col (pinky corner) and last col (thumb corner)
      (for [col (range 2 lastcol)]
        (key-wall-brace col lastrow 0 -1 web-post-bl (dec col) lastrow 0 -1 web-post-br))
-         ; front-left corner
-         ; spans across the missing pinky corner
+     ; front-left corner
+     ; spans across the missing pinky corner
      (key-wall-brace 0 (dec lastrow) -1 0 web-post-bl 1 lastrow 0 -1 web-post-bl)
-         ; no front-right corner; that's where the thumb cluster will be
+     ; no front-right corner; that's where the thumb cluster will be
      )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
