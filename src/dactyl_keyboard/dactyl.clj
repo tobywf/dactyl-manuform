@@ -161,59 +161,60 @@
 
 ; --- main options
 
-(def columns 6)
-(def rows 5)
+(def key-columns 6)
+(def key-rows 5)
 
 ; which keys to skip (default is inner front and outer front)
-(defn skip-place? [col row]
-  (and (= row (dec rows)) (or (= col 0) (= col (dec columns)))))
+(defn key-skip-place? [col row]
+  (and (= row (dec key-rows)) (or (= col 0) (= col (dec key-columns)))))
 ; TODO: parametrize me
-(defn shape-width [col row] 1.0)
+(defn key-shape-width [col row] 1.0)
 
 ; the grid spacing
-(def col-spaced (+ keycap-size 2.0))
-(def row-spaced (+ keycap-size 0.5))
+(def key-col-spaced (+ keycap-size 2.0))
+(def key-row-spaced (+ keycap-size 0.5))
 
 ; --- curvature options
 
 ; the options are usually parametrised per column
 
 ; the radius of a circle onto which each column's keys will be mapped
-(def col-radius [70 85 75 70 90 75])
+(def key-col-radius [70 85 75 70 90 75])
 ; the depth/z offset for each column; roughly corresponds to finger length
 ; this is subtracted, so higher values means deeper/lower
-(def col-depth [22 22 20 20 12 5])
-; a general depth/z offset, to adjust keys up after col-depth was applied
-(def col-z-offset 30.0)
+(def key-col-depth [22 22 20 20 12 5])
+; a general depth/z offset, to adjust keys up after key-col-depth was applied
+(def key-col-z-offset 30.0)
 ; the tilt of each column in degrees
-(def col-tilt-deg [0 -5 -10 -10 -18 -28])
+(def key-col-tilt-deg [0 -5 -10 -10 -18 -28])
 ; small tweak to column spacing - useful to compensate for large differences
 ; in tilt between columns
-(def col-x-tweak [0.0 0.0 0.5 0.0 0.0 0.5])
-(def col-y-tweak [-3.0 -4.0 0.0 0.0 0.0 -2.0])
+(def key-col-x-tweak [0.0 0.0 0.5 0.0 0.0 0.5])
+(def key-col-y-tweak [-3.0 -4.0 0.0 0.0 0.0 -2.0])
 ; which key is the center/lowest point of the circle - can be fractional
-(def row-center 1.75)
+(def key-row-center 1.75)
 
 ; --- geometry options
 
 (def cap-depth (+ plate-thickness switch-depth))
 ; angle = row-spaced (arc length) / radius
-(def col-angle (mapv (fn [r] (/ row-spaced (- r cap-depth))) col-radius))
+(def key-col-angle
+  (mapv (fn [r] (/ key-row-spaced (- r cap-depth))) key-col-radius))
 
 (defn key-place [col row shape]
   (let [; invert row, so row 0 is at the front (y positive) and row 5 is at the
         ; back (y negative)
-        row (- row-center row)
+        row (- key-row-center row)
         ; x is grid spacing, but because of the tilt it may need a tweak
-        x (+ (* col col-spaced) (col-x-tweak col))
+        x (+ (* col key-col-spaced) (key-col-x-tweak col))
         ; z is easy, too
-        z (- col-z-offset (col-depth col))
+        z (- key-col-z-offset (key-col-depth col))
         ; y is harder - want to map the linear row position onto a circle/arc
-        α (col-angle col)
-        r (col-radius col)
-        y (col-y-tweak col)
+        α (key-col-angle col)
+        r (key-col-radius col)
+        y (key-col-y-tweak col)
         ; finally, the tilt of each column to create a bowl-like key well
-        β (deg2rad (col-tilt-deg col))]
+        β (deg2rad (key-col-tilt-deg col))]
     (->> shape
          ; map the linear row position onto a circle/arc
          (translate [0.0 0.0 (- r)])
@@ -229,17 +230,17 @@
 (defn key-project [col row]
   (let [; invert row, so row 0 is at the front (y positive) and row 5 is at the
         ; back (y negative)
-        row (- row-center row)
+        row (- key-row-center row)
         ; x is grid spacing, but because of the tilt it may need a tweak
-        x (+ (* col col-spaced) (col-x-tweak col))
+        x (+ (* col key-col-spaced) (key-col-x-tweak col))
         ; z is easy, too
-        z (- col-z-offset (col-depth col))
+        z (- key-col-z-offset (key-col-depth col))
         ; y is harder - want to map the linear row position onto a circle/arc
-        α (col-angle col)
-        r (col-radius col)
-        y-base (col-y-tweak col)
+        α (key-col-angle col)
+        r (key-col-radius col)
+        y-base (key-col-y-tweak col)
         ; finally, the tilt of each column to create a bowl-like key well
-        β (deg2rad (col-tilt-deg col))
+        β (deg2rad (key-col-tilt-deg col))
         ; map the linear row position onto a circle/arc
         y-rot (* (Math/sin (* row α)) r)
         ; we can sort of ignore the tilt for the projection, since it's simply
@@ -248,16 +249,16 @@
     [x (+ y-base y-rot) 0.0]))
 
 ; TODO: parametrize me
-(defn place-all [shape]
+(defn key-place-all [shape]
   (apply union
-         (for [col (range 0 columns)
-               row (range 0 rows)
-               :when (not (skip-place? col row))]
+         (for [col (range 0 key-columns)
+               row (range 0 key-rows)
+               :when (not (key-skip-place? col row))]
            (key-place col row shape))))
-(def key-plates (place-all (key-plate-default 1.0)))
-(def key-caps (place-all (key-cap 1.0)))
+(def key-plates (key-place-all (key-plate-default 1.0)))
+(def key-caps (key-place-all (key-cap 1.0)))
 ; test plate, with no holes or nubs for easier key removal
-(def test-plates (place-all (key-plate-simple 1.0)))
+(def test-key-plates (key-place-all (key-plate-simple 1.0)))
 
 ; the visual key well representation is good for checking clearances
 (spit "things/keywell-visual.scad" (write-scad (union key-plates key-caps)))
@@ -286,33 +287,33 @@
 ; most of these functions can take a different shape. this seems unnecessary
 ; now, but i had planned to also generate support material
 
-(defn post-tr [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))
+(defn key-post-tr [shape col row]
+  (let [keycap-width (* keycap-size (key-shape-width col row))
         x (- (/ keycap-width 2) post-adj)
         y (- (/ keycap-size 2) post-adj)]
     (translate [x y 0.0] shape)))
-(defn post-tl [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))
+(defn key-post-tl [shape col row]
+  (let [keycap-width (* keycap-size (key-shape-width col row))
         x (+ (/ keycap-width -2) post-adj)
         y (- (/ keycap-size 2) post-adj)]
     (translate [x y 0.0] shape)))
-(defn post-bl [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))
+(defn key-post-bl [shape col row]
+  (let [keycap-width (* keycap-size (key-shape-width col row))
         x (+ (/ keycap-width -2) post-adj)
         y (+ (/ keycap-size -2) post-adj)]
     (translate [x y 0.0] shape)))
-(defn post-br [shape col row]
-  (let [keycap-width (* keycap-size (shape-width col row))
+(defn key-post-br [shape col row]
+  (let [keycap-width (* keycap-size (key-shape-width col row))
         x (- (/ keycap-width 2) post-adj)
         y (+ (/ keycap-size -2) post-adj)]
     (translate [x y 0.0] shape)))
 
-(def web-post-tr (partial post-tr web-post))
-(def web-post-tl (partial post-tl web-post))
-(def web-post-bl (partial post-bl web-post))
-(def web-post-br (partial post-br web-post))
+(def key-web-post-tr (partial key-post-tr web-post))
+(def key-web-post-tl (partial key-post-tl web-post))
+(def key-web-post-bl (partial key-post-bl web-post))
+(def key-web-post-br (partial key-post-br web-post))
 
-(defn post-place [col row shape-fn] (key-place col row (shape-fn col row)))
+(defn key-post-place [col row shape-fn] (key-place col row (shape-fn col row)))
 
 (defn triangle-hulls [& shapes]
   (apply union
@@ -327,23 +328,23 @@
 (defn triangle-tr [shape col row]
   (let [up-row (dec row)
         right-col (inc col)
-        shape-post-tr (partial post-tr shape)
-        shape-post-tl (partial post-tl shape)
-        shape-post-bl (partial post-bl shape)
-        shape-post-br (partial post-br shape)]
+        shape-post-tr (partial key-post-tr shape)
+        shape-post-tl (partial key-post-tl shape)
+        shape-post-bl (partial key-post-bl shape)
+        shape-post-br (partial key-post-br shape)]
     (union
      (triangle-hulls ; triangle to fill plate
-      (post-place right-col row shape-post-bl)
-      (post-place col up-row shape-post-bl)
-      (post-place col row shape-post-tr))
+      (key-post-place right-col row shape-post-bl)
+      (key-post-place col up-row shape-post-bl)
+      (key-post-place col row shape-post-tr))
      (triangle-hulls ; triangle to fill top connector
-      (post-place col up-row shape-post-bl)
-      (post-place col up-row shape-post-br)
-      (post-place col row shape-post-tr))
+      (key-post-place col up-row shape-post-bl)
+      (key-post-place col up-row shape-post-br)
+      (key-post-place col row shape-post-tr))
      (triangle-hulls ; triangle to fill right connector
-      (post-place right-col row shape-post-tl)
-      (post-place right-col row shape-post-bl)
-      (post-place col row shape-post-tr)))))
+      (key-post-place right-col row shape-post-tl)
+      (key-post-place right-col row shape-post-bl)
+      (key-post-place col row shape-post-tr)))))
 
 ; triangle in top-left (actually 3 triangles, to fill plate and connectors)
 ; 3 +--+ 1
@@ -353,23 +354,23 @@
 (defn triangle-tl [shape col row]
   (let [up-row (dec row)
         left-col (dec col)
-        shape-post-tr (partial post-tr shape)
-        shape-post-tl (partial post-tl shape)
-        shape-post-bl (partial post-bl shape)
-        shape-post-br (partial post-br shape)]
+        shape-post-tr (partial key-post-tr shape)
+        shape-post-tl (partial key-post-tl shape)
+        shape-post-bl (partial key-post-bl shape)
+        shape-post-br (partial key-post-br shape)]
     (union
      (triangle-hulls ; triangle to fill plate
-      (post-place col up-row shape-post-br)
-      (post-place left-col row shape-post-br)
-      (post-place col row shape-post-tl))
+      (key-post-place col up-row shape-post-br)
+      (key-post-place left-col row shape-post-br)
+      (key-post-place col row shape-post-tl))
      (triangle-hulls ; triangle to fill left connector
-      (post-place left-col row shape-post-br)
-      (post-place left-col row shape-post-tr)
-      (post-place col row shape-post-tl))
+      (key-post-place left-col row shape-post-br)
+      (key-post-place left-col row shape-post-tr)
+      (key-post-place col row shape-post-tl))
      (triangle-hulls ; triangle to fill top connector
-      (post-place col up-row shape-post-br)
-      (post-place col up-row shape-post-bl)
-      (post-place col row shape-post-tl)))))
+      (key-post-place col up-row shape-post-br)
+      (key-post-place col up-row shape-post-bl)
+      (key-post-place col row shape-post-tl)))))
 
 ; triangle in bottom-right (actually two triangles, to fill plate and connector)
 ;      * 2
@@ -379,23 +380,23 @@
 (defn triangle-br [shape col row]
   (let [down-row (inc row)
         right-col (inc col)
-        shape-post-tr (partial post-tr shape)
-        shape-post-tl (partial post-tl shape)
-        shape-post-bl (partial post-bl shape)
-        shape-post-br (partial post-br shape)]
+        shape-post-tr (partial key-post-tr shape)
+        shape-post-tl (partial key-post-tl shape)
+        shape-post-bl (partial key-post-bl shape)
+        shape-post-br (partial key-post-br shape)]
     (union
      (triangle-hulls ; triangle to fill plate
-      (post-place col down-row shape-post-tl)
-      (post-place right-col row shape-post-tl)
-      (post-place col row shape-post-br))
+      (key-post-place col down-row shape-post-tl)
+      (key-post-place right-col row shape-post-tl)
+      (key-post-place col row shape-post-br))
      (triangle-hulls ; triangle to fill right connector
-      (post-place right-col row shape-post-tl)
-      (post-place right-col row shape-post-bl)
-      (post-place col row shape-post-br))
+      (key-post-place right-col row shape-post-tl)
+      (key-post-place right-col row shape-post-bl)
+      (key-post-place col row shape-post-br))
      (triangle-hulls ; triangle to fill bottom connector
-      (post-place col down-row shape-post-tr)
-      (post-place col down-row shape-post-tl)
-      (post-place col row shape-post-br)))))
+      (key-post-place col down-row shape-post-tr)
+      (key-post-place col down-row shape-post-tl)
+      (key-post-place col row shape-post-br)))))
 
 ; triangle in bottom-left (actually two triangles, to fill plate and connector)
 ; *
@@ -405,77 +406,79 @@
 (defn triangle-bl [shape col row]
   (let [down-row (inc row)
         left-col (dec col)
-        shape-post-tr (partial post-tr shape)
-        shape-post-tl (partial post-tl shape)
-        shape-post-bl (partial post-bl shape)
-        shape-post-br (partial post-br shape)]
+        shape-post-tr (partial key-post-tr shape)
+        shape-post-tl (partial key-post-tl shape)
+        shape-post-bl (partial key-post-bl shape)
+        shape-post-br (partial key-post-br shape)]
     (union
      (triangle-hulls ; triangle to fill plate
-      (post-place left-col row shape-post-tr)
-      (post-place col down-row shape-post-tr)
-      (post-place col row shape-post-bl))
+      (key-post-place left-col row shape-post-tr)
+      (key-post-place col down-row shape-post-tr)
+      (key-post-place col row shape-post-bl))
      (triangle-hulls ; triangle to fill left connector
-      (post-place left-col row shape-post-br)
-      (post-place left-col row shape-post-tr)
-      (post-place col row shape-post-bl))
+      (key-post-place left-col row shape-post-br)
+      (key-post-place left-col row shape-post-tr)
+      (key-post-place col row shape-post-bl))
      (triangle-hulls ; triangle to fill top connector
-      (post-place col down-row shape-post-tr)
-      (post-place col down-row shape-post-tl)
-      (post-place col row shape-post-bl)))))
+      (key-post-place col down-row shape-post-tr)
+      (key-post-place col down-row shape-post-tl)
+      (key-post-place col row shape-post-bl)))))
 
 ; --- main options
 
 ; fill geometry for skipped keys (e.g. corners if desired). also see loop for
 ; diagonal connections below, and skip those if no fill geometry is desired.
 (defn skipped-keys-fill [shape]
-  [(triangle-tr shape 0 (dec rows))
-   (triangle-tl shape (dec columns) (dec rows))])
+  [(triangle-tr shape 0 (dec key-rows))
+   (triangle-tl shape (dec key-columns) (dec key-rows))])
 
 ; ---
 
-(def web-connectors
+(def key-web-connectors
   (apply union
          (concat
           ; row connections
-          (for [col (drop-last (range 0 columns))
-                row (range 0 rows)
-                :when (not (or (skip-place? col row)
-                               (skip-place? (inc col) row)))]
+          (for [col (drop-last (range 0 key-columns))
+                row (range 0 key-rows)
+                :when (not (or (key-skip-place? col row)
+                               (key-skip-place? (inc col) row)))]
             (triangle-hulls
-             (post-place (inc col) row web-post-tl)
-             (post-place col row web-post-tr)
-             (post-place (inc col) row web-post-bl)
-             (post-place col row web-post-br)))
+             (key-post-place (inc col) row key-web-post-tl)
+             (key-post-place col row key-web-post-tr)
+             (key-post-place (inc col) row key-web-post-bl)
+             (key-post-place col row key-web-post-br)))
           ; column connections
-          (for [col (range 0 columns)
-                row (drop-last (range 0 rows))
-                :when (not (or (skip-place? col row)
-                               (skip-place? col (inc row))))]
+          (for [col (range 0 key-columns)
+                row (drop-last (range 0 key-rows))
+                :when (not (or (key-skip-place? col row)
+                               (key-skip-place? col (inc row))))]
             (triangle-hulls
-             (post-place col row web-post-bl)
-             (post-place col row web-post-br)
-             (post-place col (inc row) web-post-tl)
-             (post-place col (inc row) web-post-tr)))
+             (key-post-place col row key-web-post-bl)
+             (key-post-place col row key-web-post-br)
+             (key-post-place col (inc row) key-web-post-tl)
+             (key-post-place col (inc row) key-web-post-tr)))
           ; diagonal connections
-          (for [col (drop-last (range 0 columns))
-                row (drop-last (range 0 rows))]
+          (for [col (drop-last (range 0 key-columns))
+                row (drop-last (range 0 key-rows))]
                 ; if skipped keys aren't filled, these can be left off
-                ; :when (not (or (skip-place? col row)
-                ;                (skip-place? col (inc row))
-                ;                (skip-place? (inc col) row)
-                ;                (skip-place? (inc col) (inc row))))]
+                ; :when (not (or (key-skip-place? col row)
+                ;                (key-skip-place? col (inc row))
+                ;                (key-skip-place? (inc col) row)
+                ;                (key-skip-place? (inc col) (inc row))))]
             (triangle-hulls
-             (post-place col row web-post-br)
-             (post-place col (inc row) web-post-tr)
-             (post-place (inc col) row web-post-bl)
-             (post-place (inc col) (inc row) web-post-tl)))
+             (key-post-place col row key-web-post-br)
+             (key-post-place col (inc row) key-web-post-tr)
+             (key-post-place (inc col) row key-web-post-bl)
+             (key-post-place (inc col) (inc row) key-web-post-tl)))
           ; geometry to fill skipped keys
           (skipped-keys-fill web-post))))
+
 
 ; the key well tester is good for checking the geometry by printing
 
 
-(spit "things/keywell-tester.scad" (write-scad (union test-plates web-connectors)))
+(spit "things/keywell-tester.scad"
+      (write-scad (union test-key-plates key-web-connectors)))
 
 ;;;;;;;;;;;;;;;;;;;;
 ;; Key Well Walls ;;
@@ -528,42 +531,42 @@
   (wall-brace (partial key-place col1 row1) dcol1 drow1 (post1 col1 row1)
               (partial key-place col2 row2) dcol2 drow2 (post2 col2 row2)))
 
-(def walls
-  (let [lastcol (dec columns) lastrow (dec rows)]
+(def key-walls
+  (let [lastcol (dec key-columns) lastrow (dec key-rows)]
     (union
      ; right wall keys
      (for [row (range 0 lastrow)]
-       (key-wall-brace lastcol row       1 0 web-post-tr lastcol row 1 0 web-post-br))
+       (key-wall-brace lastcol row       1 0 key-web-post-tr lastcol row 1 0 key-web-post-br))
      ; right wall web
      (for [row (range 1 lastrow)]
-       (key-wall-brace lastcol (dec row) 1 0 web-post-br lastcol row 1 0 web-post-tr))
+       (key-wall-brace lastcol (dec row) 1 0 key-web-post-br lastcol row 1 0 key-web-post-tr))
      ; back-right corner
-     (key-wall-brace lastcol 0 0 1 web-post-tr lastcol 0 1 0 web-post-tr)
+     (key-wall-brace lastcol 0 0 1 key-web-post-tr lastcol 0 1 0 key-web-post-tr)
      ; left wall keys
      (for [row (range 0 lastrow)]
-       (key-wall-brace 0 row       -1 0 web-post-tl 0 row -1 0 web-post-bl))
+       (key-wall-brace 0 row       -1 0 key-web-post-tl 0 row -1 0 key-web-post-bl))
      ; left wall web
      (for [row (range 1 lastrow)]
-       (key-wall-brace 0 (dec row) -1 0 web-post-bl 0 row -1 0 web-post-tl))
+       (key-wall-brace 0 (dec row) -1 0 key-web-post-bl 0 row -1 0 key-web-post-tl))
      ; back-left corner
-     (key-wall-brace 0 0 0 1 web-post-tl 0 0 -1 0 web-post-tl)
+     (key-wall-brace 0 0 0 1 key-web-post-tl 0 0 -1 0 key-web-post-tl)
      ; back wall keys
-     (for [col (range 0 columns)]
-       (key-wall-brace col 0 0 1 web-post-tl col       0 0 1 web-post-tr))
+     (for [col (range 0 key-columns)]
+       (key-wall-brace col 0 0 1 key-web-post-tl col       0 0 1 key-web-post-tr))
      ; back wall web
-     (for [col (range 1 columns)]
-       (key-wall-brace col 0 0 1 web-post-tl (dec col) 0 0 1 web-post-tr))
+     (for [col (range 1 key-columns)]
+       (key-wall-brace col 0 0 1 key-web-post-tl (dec col) 0 0 1 key-web-post-tr))
      ; front wall keys
      ; skip first col (pinky corner) and last col (thumb corner)
      (for [col (range 1 lastcol)]
-       (key-wall-brace col lastrow 0 -1 web-post-bl col       lastrow 0 -1 web-post-br))
+       (key-wall-brace col lastrow 0 -1 key-web-post-bl col       lastrow 0 -1 key-web-post-br))
      ; front wall web
      ; skip first col (pinky corner) and last col (thumb corner)
      (for [col (range 2 lastcol)]
-       (key-wall-brace col lastrow 0 -1 web-post-bl (dec col) lastrow 0 -1 web-post-br))
+       (key-wall-brace col lastrow 0 -1 key-web-post-bl (dec col) lastrow 0 -1 key-web-post-br))
      ; front-left corner
      ; spans across the missing pinky corner
-     (key-wall-brace 0 (dec lastrow) -1 0 web-post-bl 1 lastrow 0 -1 web-post-bl)
+     (key-wall-brace 0 (dec lastrow) -1 0 key-web-post-bl 1 lastrow 0 -1 key-web-post-bl)
      ; no front-right corner; that's where the thumb cluster will be
      )))
 
@@ -580,15 +583,15 @@
 
 (def usb-holder-wall-translate
   (->> usb-holder-wall
-       (translate (key-project (- columns 2) 0.0))
+       (translate (key-project (- key-columns 2) 0.0))
        (translate [holder-x-offset holder-y-offset 0.0])))
 (def usb-holder-slot-translate
   (->> usb-holder-slot
-       (translate (key-project (- columns 2) 0.0))
+       (translate (key-project (- key-columns 2) 0.0))
        (translate [holder-x-offset holder-y-offset 0.0])))
 
-(def walls (difference (union walls usb-holder-wall-translate)
-                       usb-holder-slot-translate))
+(def key-walls (difference (union key-walls usb-holder-wall-translate)
+                           usb-holder-slot-translate))
 
 (spit "things/wall-visual.scad"
-      (write-scad (union key-plates key-caps web-connectors walls)))
+      (write-scad (union key-plates key-caps key-web-connectors key-walls)))
