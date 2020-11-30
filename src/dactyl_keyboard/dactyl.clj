@@ -261,7 +261,8 @@
 (def test-key-plates (key-place-all (key-plate-simple 1.0)))
 
 ; the visual key well representation is good for checking clearances
-(spit "things/keywell-visual.scad" (write-scad (union key-plates key-caps)))
+(def keywell-visual (union key-plates key-caps))
+(spit "things/keywell-visual.scad" (write-scad keywell-visual))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Key Well Web Connectors ;;
@@ -429,8 +430,8 @@
 ; fill geometry for skipped keys (e.g. corners if desired). also see loop for
 ; diagonal connections below, and skip those if no fill geometry is desired.
 (defn skipped-keys-fill [shape]
-  [(triangle-tr shape 0 (dec key-rows))
-   (triangle-tl shape (dec key-columns) (dec key-rows))])
+  [(triangle-tr shape 0 (dec key-rows))])
+   ; (triangle-tl shape (dec key-columns) (dec key-rows))])
 
 ; ---
 
@@ -477,8 +478,8 @@
 ; the key well tester is good for checking the geometry by printing
 
 
-(spit "things/keywell-tester.scad"
-      (write-scad (union test-key-plates key-web-connectors)))
+(def keywell-tester (union test-key-plates key-web-connectors))
+(spit "things/keywell-tester.scad" (write-scad keywell-tester))
 
 ;;;;;;;;;;;;;;;;;;;;
 ;; Key Well Walls ;;
@@ -535,7 +536,8 @@
   (let [lastcol (dec key-columns) lastrow (dec key-rows)]
     (union
      ; right wall keys
-     (for [row (range 0 lastrow)]
+     ; skip last row (thumb corner)
+     (for [row (range 0 (dec lastrow))]
        (key-wall-brace lastcol row       1 0 key-web-post-tr lastcol row 1 0 key-web-post-br))
      ; right wall web
      (for [row (range 1 lastrow)]
@@ -558,7 +560,7 @@
        (key-wall-brace col 0 0 1 key-web-post-tl (dec col) 0 0 1 key-web-post-tr))
      ; front wall keys
      ; skip first col (pinky corner) and last col (thumb corner)
-     (for [col (range 1 lastcol)]
+     (for [col (range 1 (dec lastcol))]
        (key-wall-brace col lastrow 0 -1 key-web-post-bl col       lastrow 0 -1 key-web-post-br))
      ; front wall web
      ; skip first col (pinky corner) and last col (thumb corner)
@@ -567,7 +569,7 @@
      ; front-left corner
      ; spans across the missing pinky corner
      (key-wall-brace 0 (dec lastrow) -1 0 key-web-post-bl 1 lastrow 0 -1 key-web-post-bl)
-     ; no front-right corner; that's where the thumb cluster will be
+     ; no front-right corner; that's where the thumb cluster will join
      )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -593,5 +595,273 @@
 (def key-walls (difference (union key-walls usb-holder-wall-translate)
                            usb-holder-slot-translate))
 
-(spit "things/wall-visual.scad"
-      (write-scad (union key-plates key-caps key-web-connectors key-walls)))
+(def keywall-visual (union key-plates key-caps key-web-connectors key-walls))
+(spit "things/keywall-visual.scad" (write-scad keywall-visual))
+
+;;;;;;;;;;;;;;;;;;;
+;; Thumb Cluster ;;
+;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+; the grid spacing
+(def thumb-col-spaced (+ keycap-size 0.5))
+(def thumb-row-spaced (+ keycap-size 0.5))
+
+(def thumb-columns 3)
+(def thumb-rows 2)
+
+(defn thumb-skip-place? [col row] (and (= col 0) (= row 0)))
+(defn thumb-shape-height [col row] (if (= row 1) 2.0 1.0))
+(defn thumb-z-offset [col row]
+  (cond
+    (and (= row 0) (> col 0)) 3.0
+    (and (= row 1) (= col 2)) 2.0
+    :else 0.0))
+
+(def thumb-cluster-offset
+  (mapv +
+        (key-project (dec key-columns) (- key-rows 2))
+        [(/ keycap-size 2) (/ keycap-size -2) 30.0]))
+(def thumb-cluster-rotate (deg2rad -20))
+
+; ---
+
+; the thumb plates run 90 degrees to the ones in the main well. ideally, the
+; switch mounts wouldn't be rotated, but that doesn't seem bad enough to fix
+(def thumb-shape-rotate (partial rotate (/ pi 2) [0 0 1]))
+(defn thumb-plate-default [height] (thumb-shape-rotate (key-plate-default height)))
+(defn thumb-plate-simple [height] (thumb-shape-rotate (key-plate-simple height)))
+(defn thumb-cap [height] (thumb-shape-rotate (key-cap height)))
+
+(defn thumb-place [col row shape]
+  (let [x (* col thumb-col-spaced)
+        ; because the heights are variable, need to sum all previous ones
+        prev-y (apply + (for [r (range 0 row)]
+                          (* thumb-row-spaced (thumb-shape-height col r))))
+        ; also, if the height is larger than 1.0, center it
+        diff (- (thumb-shape-height col row) 1.0)
+        y (+ prev-y (/ (* thumb-row-spaced diff) 2))
+        z (thumb-z-offset col row)]
+    ; invert row, so row 0 is at the front (y positive) and row 2 is at the
+    ; back (y negative)
+    (->> shape (translate [x (- y) z])
+         (rotate thumb-cluster-rotate [0 0 1])
+         (translate thumb-cluster-offset))))
+
+(defn thumb-place-all [shape-fn]
+  (apply union
+         (for [col (range 0 thumb-columns)
+               row (range 0 thumb-rows)
+               :when (not (thumb-skip-place? col row))]
+           (thumb-place col row (shape-fn (thumb-shape-height col row))))))
+
+(def thumb-plates (thumb-place-all thumb-plate-default))
+(def thumb-caps (thumb-place-all thumb-cap))
+; test plate, with no holes or nubs for easier key removal
+(def test-thumb-plates (thumb-place-all thumb-plate-simple))
+
+; the visual thumb cluster representation is good for checking clearances
+(def thumbwell-visual (union thumb-plates thumb-caps))
+(spit "things/thumbwell-visual.scad"
+      (write-scad (union keywell-visual thumbwell-visual)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Thumb Cluster Web Connectors ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; most of these functions can take a different shape. this seems unnecessary
+; now, but i had planned to also generate support material
+
+(defn thumb-post-tr [shape col row]
+  (let [keycap-height (* keycap-size (thumb-shape-height col row))
+        x (- (/ keycap-size 2) post-adj)
+        y (- (/ keycap-height 2) post-adj)]
+    (translate [x y 0.0] shape)))
+(defn thumb-post-tl [shape col row]
+  (let [keycap-height (* keycap-size (thumb-shape-height col row))
+        x (+ (/ keycap-size -2) post-adj)
+        y (- (/ keycap-height 2) post-adj)]
+    (translate [x y 0.0] shape)))
+(defn thumb-post-bl [shape col row]
+  (let [keycap-height (* keycap-size (thumb-shape-height col row))
+        x (+ (/ keycap-size -2) post-adj)
+        y (+ (/ keycap-height -2) post-adj)]
+    (translate [x y 0.0] shape)))
+(defn thumb-post-br [shape col row]
+  (let [keycap-height (* keycap-size (thumb-shape-height col row))
+        x (- (/ keycap-size 2) post-adj)
+        y (+ (/ keycap-height -2) post-adj)]
+    (translate [x y 0.0] shape)))
+
+(def thumb-web-post-tr (partial thumb-post-tr web-post))
+(def thumb-web-post-tl (partial thumb-post-tl web-post))
+(def thumb-web-post-bl (partial thumb-post-bl web-post))
+(def thumb-web-post-br (partial thumb-post-br web-post))
+
+(defn thumb-post-place [col row shape-fn] (thumb-place col row (shape-fn col row)))
+
+; ---
+
+(def thumb-web-connectors
+  (apply union
+         (concat
+          ; row connections
+          (for [col (drop-last (range 0 thumb-columns))
+                row (range 0 thumb-rows)
+                :when (not (or (thumb-skip-place? col row)
+                               (thumb-skip-place? (inc col) row)))]
+            (triangle-hulls
+             (thumb-post-place (inc col) row thumb-web-post-tl)
+             (thumb-post-place col row thumb-web-post-tr)
+             (thumb-post-place (inc col) row thumb-web-post-bl)
+             (thumb-post-place col row thumb-web-post-br)))
+          ; column connections
+          (for [col (range 0 thumb-columns)
+                row (drop-last (range 0 thumb-rows))
+                :when (not (or (thumb-skip-place? col row)
+                               (thumb-skip-place? col (inc row))))]
+            (triangle-hulls
+             (thumb-post-place col row thumb-web-post-bl)
+             (thumb-post-place col row thumb-web-post-br)
+             (thumb-post-place col (inc row) thumb-web-post-tl)
+             (thumb-post-place col (inc row) thumb-web-post-tr)))
+          ; diagonal connections
+          (for [col (drop-last (range 0 thumb-columns))
+                row (drop-last (range 0 thumb-rows))
+                :when (not (thumb-skip-place? col row))]
+            (triangle-hulls
+             (thumb-post-place col row thumb-web-post-br)
+             (thumb-post-place col (inc row) thumb-web-post-tr)
+             (thumb-post-place (inc col) row thumb-web-post-bl)
+             (thumb-post-place (inc col) (inc row) thumb-web-post-tl))))))
+
+
+; the thumb well tester is good for checking the geometry by printing, but since
+; the geometry is so simple, this probably isn't needed
+
+
+(def thumbwell-tester (union test-thumb-plates thumb-web-connectors))
+(spit "things/thumbwell-tester.scad" (write-scad thumbwell-tester))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Thumb Cluster Walls ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; ---
+
+(defn thumb-wall-brace [col1 row1 dcol1 drow1 post1 col2 row2 dcol2 drow2 post2]
+  (wall-brace (partial thumb-place col1 row1) dcol1 drow1 (post1 col1 row1)
+              (partial thumb-place col2 row2) dcol2 drow2 (post2 col2 row2)))
+
+(def thumb-walls
+  (let [lastcol (dec thumb-columns) lastrow (dec thumb-rows)]
+    (union
+     ; right wall keys
+     (for [row (range 0 thumb-rows)]
+       (thumb-wall-brace lastcol row       1 0 thumb-web-post-tr lastcol row 1 0 thumb-web-post-br))
+     ; right wall web
+     (for [row (range 1 thumb-rows)]
+       (thumb-wall-brace lastcol (dec row) 1 0 thumb-web-post-br lastcol row 1 0 thumb-web-post-tr))
+     ; back-right corner
+     (thumb-wall-brace lastcol 0 0 1 thumb-web-post-tr lastcol 0 1 0 thumb-web-post-tr)
+     ; left wall keys
+     ; skip missing key and one more to join up with key walls
+     (for [row (range 2 thumb-rows)]
+       (thumb-wall-brace 0 row       -1 0 thumb-web-post-tl 0 row -1 0 thumb-web-post-bl))
+     ; left wall web
+     ; skip missing key and one more to join up with key walls
+     (for [row (range 2 thumb-rows)]
+       (thumb-wall-brace 0 (dec row) -1 0 thumb-web-post-bl 0 row -1 0 thumb-web-post-tl))
+     ; no back-left corner; that's where it joins up to the key walls
+     ; back wall keys
+     (for [col (range 1 thumb-columns)]
+       (thumb-wall-brace col 0 0 1 thumb-web-post-tl col       0 0 1 thumb-web-post-tr))
+     ; back wall web
+     ; skip top corner
+     (for [col (range 2 thumb-columns)]
+       (thumb-wall-brace col 0 0 1 thumb-web-post-tl (dec col) 0 0 1 thumb-web-post-tr))
+     ; front wall keys
+     (for [col (range 0 thumb-columns)]
+       (thumb-wall-brace col lastrow 0 -1 thumb-web-post-bl col       lastrow 0 -1 thumb-web-post-br))
+     ; front wall web
+     (for [col (range 1 thumb-columns)]
+       (thumb-wall-brace col lastrow 0 -1 thumb-web-post-bl (dec col) lastrow 0 -1 thumb-web-post-br))
+     ; front-left corner
+     ; (thumb-wall-brace 0 lastrow -1 0 thumb-web-post-bl 0 lastrow 0 -1 thumb-web-post-bl)
+     ; front-right corner
+     (thumb-wall-brace lastcol lastrow 1 0 thumb-web-post-br lastcol lastrow 0 -1 thumb-web-post-br))))
+
+(def join-walls
+  (let [last-col (dec key-columns)
+        front-col (dec last-col)
+        last-row (dec key-rows)
+        back-row (dec last-row)]
+    (union
+         ; front
+     (wall-brace (partial key-place front-col last-row)
+                 0
+                 -1
+                 (key-web-post-bl front-col last-row)
+                 (partial thumb-place 0 (inc 0))
+                 0
+                 -1
+                 (thumb-web-post-bl 0 (inc 0)))
+         ; back
+     (wall-brace (partial key-place last-col back-row)
+                 1
+                 0
+                 (key-web-post-tr last-col back-row)
+                 (partial thumb-place (inc 0) 0)
+                 0
+                 1
+                 (thumb-web-post-tl (inc 0) 0))
+         ; key to thumb... ugh
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-tr)
+      (thumb-post-place (inc 0) 0 thumb-web-post-tl)
+      (key-post-place last-col back-row key-web-post-br))
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-br)
+      (thumb-post-place (inc 0) 0 thumb-web-post-tl)
+      (thumb-post-place (inc 0) 0 thumb-web-post-bl))
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-br)
+      (thumb-post-place (inc 0) 0 thumb-web-post-bl)
+      (thumb-post-place (inc 0) (inc 0) thumb-web-post-tl))
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-br)
+      (thumb-post-place (inc 0) (inc 0) thumb-web-post-tl)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tr))
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-br)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tr)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tl))
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-bl)
+      (key-post-place last-col back-row key-web-post-br)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tl))
+     (triangle-hulls
+      (key-post-place last-col back-row key-web-post-bl)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tl)
+      (key-post-place last-col last-row key-web-post-tl))
+     (triangle-hulls
+      (key-post-place front-col last-row key-web-post-tr)
+      (key-post-place last-col last-row key-web-post-tl)
+      (key-post-place front-col last-row key-web-post-br))
+     (triangle-hulls
+      (key-post-place last-col last-row key-web-post-tl)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tl)
+      (key-post-place front-col last-row key-web-post-br))
+     (triangle-hulls
+      (key-post-place front-col last-row key-web-post-br)
+      (thumb-post-place 0 (inc 0) thumb-web-post-tl)
+      (thumb-post-place 0 (inc 0) thumb-web-post-bl))
+     (triangle-hulls
+      (key-post-place front-col last-row key-web-post-br)
+      (thumb-post-place 0 (inc 0) thumb-web-post-bl)
+      (key-post-place front-col last-row key-web-post-bl)))))
+
+(def thumbwall-visual
+  (union thumb-plates thumb-caps thumb-web-connectors thumb-walls))
+(spit "things/thumbwall-visual.scad" (write-scad (union keywall-visual thumbwall-visual join-walls)))
