@@ -1,6 +1,7 @@
 (ns dactyl-keyboard.dactyl
   (:refer-clojure :exclude [use import])
   (:require [dactyl-keyboard.holders :refer :all]
+            [dactyl-keyboard.web :refer :all]
             [scad-clj.scad :refer :all]
             [scad-clj.model :refer :all]))
 
@@ -227,11 +228,11 @@
          ; add the simple translations
          (translate [x-offset y-offset z-offset]))))
 
-(defn center-pos [col row] [0.0 0.0 0.0])
+(def center-pos [0.0 0.0 0.0])
 
-(defn key-position [col row position-fn]
+(defn key-position [col row position]
   (let [; this  can be used to project a point other than the center
-        [x-pos y-pos z-pos] (position-fn col row)
+        [x-pos y-pos z-pos] (if (vector? position) position (position col row))
         ; invert row, so row 0 is at the front (y positive) and row 5 is at the
         ; back (y negative)
         row (- key-row-center row)
@@ -270,31 +271,6 @@
         z-global (+ z-offset z-rot)]
     [x-global y-global z-global]))
 
-(defn key-project [col row position-fn]
-  (let [[x y z] (key-position col row position-fn)]
-    [x y 0.0]))
-
-(defn key-edge-tr [col row]
-  (let [keycap-width (* keycap-size (key-shape-width col row))
-        x (/ keycap-width 2)
-        y (/ keycap-size 2)]
-    [x y 0.0]))
-(defn key-edge-tl [col row]
-  (let [keycap-width (* keycap-size (key-shape-width col row))
-        x (/ keycap-width -2)
-        y (/ keycap-size 2)]
-    [x y 0.0]))
-(defn key-edge-bl [col row]
-  (let [keycap-width (* keycap-size (key-shape-width col row))
-        x (/ keycap-width -2)
-        y (/ keycap-size -2)]
-    [x y 0.0]))
-(defn key-edge-br [col row]
-  (let [keycap-width (* keycap-size (key-shape-width col row))
-        x (/ keycap-width 2)
-        y (/ keycap-size -2)]
-    [x y 0.0]))
-
 (defn key-place-all [shape-fn]
   (apply union
          (for [col (range 0 key-columns)
@@ -309,333 +285,6 @@
 ; the visual key well representation is good for checking clearances
 (def keywell-visual (union key-plates key-caps))
 (spit "things/keywell-visual.scad" (write-scad keywell-visual))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Key Well Web Connectors ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; --- main options
-
-; see skipped-keys-fill below - i can't move it up here because of where the
-; function definitions are
-
-; --- geometry options (shouldn't need changing)
-
-(def web-thickness plate-thickness)
-(def post-size 0.1)
-(defn web-post-fn [x y]
-  (let [shape (cube post-size post-size web-thickness)
-        z (+ (/ web-thickness -2) plate-thickness)]
-    (translate [x y z] shape)))
-
-; IMPORTANT: the posts need a tiny bit of overlap; otherwise union will
-; not merge the two objects, leave a face there, and generate a non-manifold
-; shape
-(def post-adj (+ (/ post-size 2) z-fighting))
-(def web-post-tr (web-post-fn (- post-adj) (- post-adj)))
-(def web-post-tl (web-post-fn post-adj (- post-adj)))
-(def web-post-bl (web-post-fn post-adj post-adj))
-(def web-post-br (web-post-fn (- post-adj) post-adj))
-
-; ---
-
-; most of these functions can take a different shape. this seems unnecessary
-; now, but i had planned to also generate support material
-
-(defn key-web-post-tr [col row] (translate (key-edge-tr col row) web-post-tr))
-(defn key-web-post-tl [col row] (translate (key-edge-tl col row) web-post-tl))
-(defn key-web-post-bl [col row] (translate (key-edge-bl col row) web-post-bl))
-(defn key-web-post-br [col row] (translate (key-edge-br col row) web-post-br))
-
-(defn key-edge-place [col row shape-fn] (key-place col row (shape-fn col row)))
-
-; triangle in top-right (actually 3 triangles, to fill plate and connectors)
-; 2 +--+ 3
-;    \ |
-;     \|
-;      * 1
-(defn key-triangle-tr [col row]
-  (let [up-row (dec row) right-col (inc col)]
-    (union
-     (hull ; triangle to fill plate
-      (key-edge-place right-col row key-web-post-bl)
-      (key-edge-place col up-row key-web-post-bl)
-      (key-edge-place col row key-web-post-tr))
-     (hull ; triangle to fill top connector
-      (key-edge-place col up-row key-web-post-bl)
-      (key-edge-place col up-row key-web-post-br)
-      (key-edge-place col row key-web-post-tr))
-     (hull ; triangle to fill right connector
-      (key-edge-place right-col row key-web-post-tl)
-      (key-edge-place right-col row key-web-post-bl)
-      (key-edge-place col row key-web-post-tr)))))
-
-; triangle in top-left (actually 3 triangles, to fill plate and connectors)
-; 3 +--+ 1
-;   | /
-;   |/
-; 2 *
-(defn key-triangle-tl [col row]
-  (let [up-row (dec row) left-col (dec col)]
-    (union
-     (hull ; triangle to fill plate
-      (key-edge-place col up-row key-web-post-br)
-      (key-edge-place left-col row key-web-post-br)
-      (key-edge-place col row key-web-post-tl))
-     (hull ; triangle to fill left connector
-      (key-edge-place left-col row key-web-post-br)
-      (key-edge-place left-col row key-web-post-tr)
-      (key-edge-place col row key-web-post-tl))
-     (hull ; triangle to fill top connector
-      (key-edge-place col up-row key-web-post-br)
-      (key-edge-place col up-row key-web-post-bl)
-      (key-edge-place col row key-web-post-tl)))))
-
-; triangle in bottom-right (actually 3 triangles, to fill plate and connectors)
-;      * 2
-;     /|
-;    / |
-; 1 +--+ 3
-(defn key-triangle-br [col row]
-  (let [down-row (inc row) right-col (inc col)]
-    (union
-     (hull ; triangle to fill plate
-      (key-edge-place col down-row key-web-post-tl)
-      (key-edge-place right-col row key-web-post-tl)
-      (key-edge-place col row key-web-post-br))
-     (hull ; triangle to fill right connector
-      (key-edge-place right-col row key-web-post-tl)
-      (key-edge-place right-col row key-web-post-bl)
-      (key-edge-place col row key-web-post-br))
-     (hull ; triangle to fill bottom connector
-      (key-edge-place col down-row key-web-post-tr)
-      (key-edge-place col down-row key-web-post-tl)
-      (key-edge-place col row key-web-post-br)))))
-
-; triangle in bottom-left (actually 3 triangles, to fill plate and connectors)
-; *
-; |\
-; | \
-; +--+
-(defn key-triangle-bl [col row]
-  (let [down-row (inc row) left-col (dec col)]
-    (union
-     (hull ; triangle to fill plate
-      (key-edge-place left-col row key-web-post-tr)
-      (key-edge-place col down-row key-web-post-tr)
-      (key-edge-place col row key-web-post-bl))
-     (hull ; triangle to fill left connector
-      (key-edge-place left-col row key-web-post-br)
-      (key-edge-place left-col row key-web-post-tr)
-      (key-edge-place col row key-web-post-bl))
-     (hull ; triangle to fill top connector
-      (key-edge-place col down-row key-web-post-tr)
-      (key-edge-place col down-row key-web-post-tl)
-      (key-edge-place col row key-web-post-bl)))))
-
-; --- main options
-
-; fill geometry for skipped keys (e.g. corners if desired). also see loop for
-; diagonal connections below, and skip those if no fill geometry is desired.
-; the skipped key for the thumb cluster connection shouldn't be filled.
-(def key-skipped-fill [(key-triangle-tr 0 (dec key-rows))])
-
-; ---
-
-(def key-web-connectors
-  (apply union
-         (concat
-          ; row connections
-          (for [col (range 0 (dec key-columns))
-                row (range 0 key-rows)
-                :when (not (or (key-skip-place? col row)
-                               (key-skip-place? (inc col) row)))]
-            (hull
-             (key-edge-place col row key-web-post-tr)
-             (key-edge-place (inc col) row key-web-post-tl)
-             (key-edge-place (inc col) row key-web-post-bl)
-             (key-edge-place col row key-web-post-br)))
-          ; column connections
-          (for [col (range 0 key-columns)
-                row (range 0 (dec key-rows))
-                :when (not (or (key-skip-place? col row)
-                               (key-skip-place? col (inc row))))]
-            (hull
-             (key-edge-place col row key-web-post-bl)
-             (key-edge-place col row key-web-post-br)
-             (key-edge-place col (inc row) key-web-post-tr)
-             (key-edge-place col (inc row) key-web-post-tl)))
-          ; diagonal connections
-          (for [col (range 0 (dec key-columns))
-                row (range 0 (dec key-rows))]
-                ; if skipped keys aren't filled, these can be left off
-                ; :when (not (or (key-skip-place? col row)
-                ;                (key-skip-place? col (inc row))
-                ;                (key-skip-place? (inc col) row)
-                ;                (key-skip-place? (inc col) (inc row))))]
-            (hull
-             (key-edge-place col row key-web-post-br)
-             (key-edge-place (inc col) row key-web-post-bl)
-             (key-edge-place (inc col) (inc row) key-web-post-tl)
-             (key-edge-place col (inc row) key-web-post-tr)))
-          ; geometry to fill skipped keys
-          key-skipped-fill)))
-
-
-; the key well tester is good for checking the geometry by printing
-
-
-(def keywell-tester (union test-key-plates key-web-connectors))
-(spit "things/keywell-tester.scad" (write-scad keywell-tester))
-
-;;;;;;;;;;;;;;;;;;;;
-;; Key Well Walls ;;
-;;;;;;;;;;;;;;;;;;;;
-
-; --- main options
-
-; how far the walls are extruded from the key well (in x and y)
-(def wall-extrude 2.0)
-
-; length of the first downward-sloping part of the wall
-(def wall-z-depth -8.0)
-
-; ---
-
-(defn bottom-hull [& p]
-  (hull (translate [0 0 z-fighting] p) ; translate up, to ensure it merges
-        (extrude-linear {:height z-fighting
-                         :twist 0
-                         :convexity 0}
-                        (project p))))
-
-(defn wall-locate1 [dcol drow]
-  [(* dcol wall-thickness)
-   (* drow wall-thickness)
-   -1.0])
-(defn wall-locate2 [dcol drow]
-  [(* dcol wall-extrude)
-   (* drow wall-extrude)
-   wall-z-depth])
-(defn wall-locate3 [dcol drow]
-  [(* dcol (+ wall-extrude wall-thickness))
-   (* drow (+ wall-extrude wall-thickness))
-   wall-z-depth])
-
-(defn key-wall-geom [place1 dcol1 drow1 post1 place2 dcol2 drow2 post2]
-  (union
-   (hull
-    (place1 post1)
-    (place1 (translate (wall-locate1 dcol1 drow1) post1))
-    (place1 (translate (wall-locate2 dcol1 drow1) post1))
-    (place1 (translate (wall-locate3 dcol1 drow1) post1))
-    (place2 post2)
-    (place2 (translate (wall-locate1 dcol2 drow2) post2))
-    (place2 (translate (wall-locate2 dcol2 drow2) post2))
-    (place2 (translate (wall-locate3 dcol2 drow2) post2)))
-   (bottom-hull
-    (place1 (translate (wall-locate2 dcol1 drow1) post1))
-    (place1 (translate (wall-locate3 dcol1 drow1) post1))
-    (place2 (translate (wall-locate2 dcol2 drow2) post2))
-    (place2 (translate (wall-locate3 dcol2 drow2) post2)))))
-
-(defn key-wall-brace [col1 row1 dcol1 drow1 post1 col2 row2 dcol2 drow2 post2]
-  (key-wall-geom (partial key-place col1 row1) dcol1 drow1 (post1 col1 row1)
-                 (partial key-place col2 row2) dcol2 drow2 (post2 col2 row2)))
-
-(def key-walls
-  (let [; this seems silly, but helps differentiate abs cols/rows vs deltas
-        firstcol 0
-        firstrow 0
-        lastcol (dec key-columns)
-        lastrow (dec key-rows)]
-    (union
-     ; outer walls (left, at pinky keys)
-     ; skip last row (pinky corner)
-     (for [row (range 0 (- key-rows 1))]
-       (key-wall-brace firstcol row -1 0 key-web-post-tl
-                       firstcol row -1 0 key-web-post-bl))
-     ; outer webs (connect from back to front, current to next)
-     ; skip last row (skipped pinky corner will fill this)
-     (for [row (range 0 (- key-rows 2))]
-       (->> (key-wall-brace firstcol row       -1 0 key-web-post-bl
-                            firstcol (inc row) -1 0 key-web-post-tl)
-            ; move in to ensure no faces are shared to walls (manifold)
-            ; only seems to be required along rows, which are straight
-            (translate [z-fighting 0.0 0.0])))
-     ; inner walls (right, at thumb cluster)
-     ; skip last two rows (thumb cluster will join)
-     (for [row (range 0 (- key-rows 2))]
-       (key-wall-brace lastcol row 1 0 key-web-post-tr
-                       lastcol row 1 0 key-web-post-br))
-     ; inner webs (connect from back to front, current to next)
-     ; skip last two rows (thumb cluster will join)
-     ; keep the last next web, unusual but helps making a nicer join to thumb
-     (for [row (range 0 (- key-rows 2))]
-       (->> (key-wall-brace lastcol row       1 0 key-web-post-br
-                            lastcol (inc row) 1 0 key-web-post-tr)
-            ; move in to ensure no faces are shared to walls (manifold)
-            ; only seems to be required along rows, which are straight
-            (translate [(- z-fighting) 0.0 0.0])))
-     ; back walls
-     (for [col (range 0 key-columns)]
-       (key-wall-brace col firstrow 0 1 key-web-post-tl
-                       col firstrow 0 1 key-web-post-tr))
-     ; back webs (connect from outer to inner, current to next)
-     (for [col (range 0 (- key-columns 1))]
-       (key-wall-brace col       firstrow 0 1 key-web-post-tr
-                       (inc col) firstrow 0 1 key-web-post-tl))
-     ; front walls
-     ; skip first col (pinky corner)
-     ; skip last col (thumb cluster will join)
-     (for [col (range 1 (- key-columns 1))]
-       (key-wall-brace col lastrow 0 -1 key-web-post-bl
-                       col lastrow 0 -1 key-web-post-br))
-     ; front webs (connect from outer to inner, current to next)
-     ; skip first col (pinky corner)
-     ; skip last col (thumb cluster will join)
-     ; unlike inner webs, don't keep the last next web, doesn't help the thumb
-     ; cluster join
-     (for [col (range 1 (- key-columns 2))]
-       (key-wall-brace col       lastrow 0 -1 key-web-post-br
-                       (inc col) lastrow 0 -1 key-web-post-bl))
-     ; back-outer corner
-     (key-wall-brace firstcol firstrow 0 1 key-web-post-tl
-                     firstcol firstrow -1 0 key-web-post-tl)
-     ; back-inner corner
-     (key-wall-brace lastcol firstrow 0 1 key-web-post-tr
-                     lastcol firstrow 1 0 key-web-post-tr)
-     ; front-outer corner (spans across the missing pinky corner)
-     (key-wall-brace firstcol (dec lastrow) -1 0 key-web-post-bl
-                     (inc firstcol) lastrow 0 -1 key-web-post-bl)
-     ; no front-inner corner; that's where the thumb cluster will join
-     )))
-
-;;;;;;;;;;;;;;;;;;;;;;;;
-;; USB Holder Cut-out ;;
-;;;;;;;;;;;;;;;;;;;;;;;;
-
-; --- main options
-
-(def holder-x-offset 0.0)
-(def holder-y-offset (+ (/ keycap-size 2) (/ wall-extrude 2) wall-thickness))
-
-; ---
-
-(def usb-holder-wall-translate
-  (->> usb-holder-wall
-       (translate (key-project (- key-columns 2) 0 center-pos))
-       (translate [holder-x-offset holder-y-offset 0.0])))
-(def usb-holder-slot-translate
-  (->> usb-holder-slot
-       (translate (key-project (- key-columns 2) 0 center-pos))
-       (translate [holder-x-offset holder-y-offset 0.0])))
-
-(def key-walls (difference (union key-walls usb-holder-wall-translate)
-                           usb-holder-slot-translate))
-
-(def keywall-visual (union key-plates key-caps key-web-connectors key-walls))
-(spit "things/keywall-visual.scad" (write-scad keywall-visual))
 
 ;;;;;;;;;;;;;;;;;;;
 ;; Thumb Cluster ;;
@@ -659,10 +308,11 @@
     :else 0.0))
 
 (def thumb-cluster-offset-z 30.0)
+(def thumb-cluster-key-join (key-position (- key-columns 1) (- key-rows 2) center-pos))
 (def thumb-cluster-offset
-  (mapv +
-        (key-project (- key-columns 1) (- key-rows 2) center-pos)
-        [(/ keycap-size 2) (/ keycap-size -2) thumb-cluster-offset-z]))
+  [(+ (/ keycap-size 2) (thumb-cluster-key-join 0))
+   (+ (/ keycap-size -2) (thumb-cluster-key-join 1))
+   thumb-cluster-offset-z])
 (def thumb-cluster-rotate (deg2rad -20))
 
 ; ---
@@ -692,9 +342,9 @@
          (rotate thumb-cluster-rotate [0 0 1])
          (translate thumb-cluster-offset))))
 
-(defn thumb-position [col row position-fn]
+(defn thumb-position [col row position]
   (let [; this  can be used to project a point other than the center
-        [x-pos y-pos z-pos] (position-fn col row)
+        [x-pos y-pos z-pos] (if (vector? position) position (position col row))
         x-local (+ (* col thumb-col-spaced) x-pos)
         ; because the heights are variable, need to sum all previous ones
         y-prev (apply + (for [r (range 0 row)]
@@ -717,31 +367,6 @@
         z-global (+ z-pos z-local z-offset)]
     [x-global y-global z-global]))
 
-(defn thumb-project [col row position-fn]
-  (let [[x y z] (thumb-position col row position-fn)]
-    [x y 0.0]))
-
-(defn thumb-edge-tr [col row]
-  (let [keycap-height (* keycap-size (thumb-shape-height col row))
-        x (/ keycap-size 2)
-        y (/ keycap-height 2)]
-    [x y 0.0]))
-(defn thumb-edge-tl [col row]
-  (let [keycap-height (* keycap-size (thumb-shape-height col row))
-        x (/ keycap-size -2)
-        y (/ keycap-height 2)]
-    [x y 0.0]))
-(defn thumb-edge-bl [col row]
-  (let [keycap-height (* keycap-size (thumb-shape-height col row))
-        x (/ keycap-size -2)
-        y (/ keycap-height -2)]
-    [x y 0.0]))
-(defn thumb-edge-br [col row]
-  (let [keycap-height (* keycap-size (thumb-shape-height col row))
-        x (/ keycap-size 2)
-        y (/ keycap-height -2)]
-    [x y 0.0]))
-
 (defn thumb-place-all [shape-fn]
   (apply union
          (for [col (range 0 thumb-columns)
@@ -756,221 +381,194 @@
 
 ; the visual thumb cluster representation is good for checking clearances
 (def thumbwell-visual (union thumb-plates thumb-caps))
-(spit "things/thumbwell-visual.scad"
-      (write-scad (union keywell-visual thumbwell-visual)))
+(spit "things/thumbwell-visual.scad" (write-scad thumbwell-visual))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Key Well Web Connectors ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+; the last col/row isn't filled, as the thumb cluster will join here
+(defn key-web-fill [edges]
+  [(web-connector-fill-right-front edges 0 (dec key-rows))])
+
+; ---
+
+; pre-calculate all edge points for a single key plate
+(defn key-edge [col row]
+  (let [keycap-width (* keycap-size (key-shape-width col row))
+        w (/ keycap-width 2)
+        h (/ keycap-size 2)]
+    {:right-back-bottom (key-position col row [w h 0.0])
+     :left-back-bottom (key-position col row [(- w) h 0.0])
+     :right-front-bottom (key-position col row [w (- h) 0.0])
+     :left-front-bottom (key-position col row [(- w) (- h) 0.0])
+     :right-back-top (key-position col row [w h plate-thickness])
+     :left-back-top (key-position col row [(- w) h plate-thickness])
+     :right-front-top (key-position col row [w (- h) plate-thickness])
+     :left-front-top (key-position col row [(- w) (- h) plate-thickness])}))
+
+; pre-calculate all edge points for all key plates
+(def key-edges
+  (apply merge (for [col (range 0 key-columns)
+                     row (range 0 key-rows)
+                     :when (not (key-skip-place? col row))]
+                 {[col row] (key-edge col row)})))
+
+; re-define this now that the edges have been calculated
+(def key-web-fill (key-web-fill key-edges))
+
+(def key-web-connectors
+  (web-connectors key-columns key-rows key-edges key-skip-place? key-web-fill))
+
+; the key well tester is good for checking the geometry by printing
+(def keywell-tester (union test-key-plates key-web-connectors))
+(spit "things/keywell-tester.scad" (write-scad keywell-tester))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Thumb Cluster Web Connectors ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; most of these functions can take a different shape. this seems unnecessary
-; now, but i had planned to also generate support material
+; pre-calculate all edge points for a single thumb plate
+(defn thumb-edge [col row]
+  (let [keycap-height (* keycap-size (thumb-shape-height col row))
+        w (/ keycap-size 2)
+        h (/ keycap-height 2)]
+    {:right-back-bottom (thumb-position col row [w (- h) 0.0])
+     :left-back-bottom (thumb-position col row [(- w) (- h) 0.0])
+     :right-front-bottom (thumb-position col row [w h 0.0])
+     :left-front-bottom (thumb-position col row [(- w) h 0.0])
+     :right-back-top (thumb-position col row [w (- h) plate-thickness])
+     :left-back-top (thumb-position col row [(- w) (- h) plate-thickness])
+     :right-front-top (thumb-position col row [w h plate-thickness])
+     :left-front-top (thumb-position col row [(- w) h plate-thickness])}))
 
-
-(defn thumb-web-post-tr [col row] (translate (thumb-edge-tr col row) web-post-tr))
-(defn thumb-web-post-tl [col row] (translate (thumb-edge-tl col row) web-post-tl))
-(defn thumb-web-post-bl [col row] (translate (thumb-edge-bl col row) web-post-bl))
-(defn thumb-web-post-br [col row] (translate (thumb-edge-br col row) web-post-br))
-
-(defn thumb-edge-place [col row shape-fn] (thumb-place col row (shape-fn col row)))
-
-; ---
+; pre-calculate all edge points for all thumb plates
+(def thumb-edges
+  (apply merge (for [col (range 0 thumb-columns)
+                     row (range 0 thumb-rows)
+                     :when (not (thumb-skip-place? col row))]
+                 {[col row] (thumb-edge col row)})))
 
 (def thumb-web-connectors
-  (apply union
-         (concat
-          ; row connections
-          (for [col (range 0 (dec thumb-columns))
-                row (range 0 thumb-rows)
-                :when (not (or (thumb-skip-place? col row)
-                               (thumb-skip-place? (inc col) row)))]
-            (hull
-             (thumb-edge-place col row thumb-web-post-tr)
-             (thumb-edge-place (inc col) row thumb-web-post-tl)
-             (thumb-edge-place (inc col) row thumb-web-post-bl)
-             (thumb-edge-place col row thumb-web-post-br)))
-          ; column connections
-          (for [col (range 0 thumb-columns)
-                row (range 0 (dec thumb-rows))
-                :when (not (or (thumb-skip-place? col row)
-                               (thumb-skip-place? col (inc row))))]
-            (hull
-             (thumb-edge-place col row thumb-web-post-bl)
-             (thumb-edge-place col row thumb-web-post-br)
-             (thumb-edge-place col (inc row) thumb-web-post-tr)
-             (thumb-edge-place col (inc row) thumb-web-post-tl)))
-          ; diagonal connections
-          (for [col (range 0 (dec thumb-columns))
-                row (range 0 (dec thumb-rows))]
-                ; :when (not (thumb-skip-place? col row))
-            (hull
-             (thumb-edge-place col row thumb-web-post-br)
-             (thumb-edge-place (inc col) row thumb-web-post-bl)
-             (thumb-edge-place (inc col) (inc row) thumb-web-post-tl)
-             (thumb-edge-place col (inc row) thumb-web-post-tr))))))
-
+  (web-connectors thumb-columns thumb-rows thumb-edges thumb-skip-place? []))
 
 ; the thumb well tester is good for checking the geometry by printing, but since
 ; the geometry is so simple, this probably isn't needed
-
-
 (def thumbwell-tester (union test-thumb-plates thumb-web-connectors))
 (spit "things/thumbwell-tester.scad" (write-scad thumbwell-tester))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Thumb Cluster Walls ;;
+;; Join Web Connectors ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def join-web-connectors
+  (let [last-col (dec key-columns)
+        last-row (dec key-rows)
+        key-right-back (key-edges [last-col (dec last-row)])
+        key-left-front (key-edges [(dec last-col) last-row])
+        thumb-right-back (thumb-edges [1 0])
+        thumb-left-front (thumb-edges [0 1])
+        key-right-back2 (key-edges [last-col (- last-row 2)])
+        key-left2-front (key-edges [(- last-col 2) last-row])]
+    (union
+     (web-tri (key-right-back2 :right-front-bottom)
+              (thumb-right-back :left-back-bottom)
+              (key-right-back :right-back-bottom)
+              (key-right-back2 :right-front-top)
+              (thumb-right-back :left-back-top)
+              (key-right-back :right-back-top))
+     (web-tri (key-right-back :right-back-bottom)
+              (thumb-right-back :left-back-bottom)
+              (key-right-back :right-front-bottom)
+              (key-right-back :right-back-top)
+              (thumb-right-back :left-back-top)
+              (key-right-back :right-front-top))
+     (web-tri (key-right-back :right-front-bottom)
+              (thumb-right-back :left-back-bottom)
+              (thumb-right-back :left-front-bottom)
+              (key-right-back :right-front-top)
+              (thumb-right-back :left-back-top)
+              (thumb-right-back :left-front-top))
+     (web-tri (key-right-back :right-front-bottom)
+              (thumb-right-back :left-front-bottom)
+              (thumb-left-front :right-back-bottom)
+              (key-right-back :right-front-top)
+              (thumb-right-back :left-front-top)
+              (thumb-left-front :right-back-top))
+     (web-tri (key-right-back :right-front-bottom)
+              (thumb-left-front :right-back-bottom)
+              (thumb-left-front :left-back-bottom)
+              (key-right-back :right-front-top)
+              (thumb-left-front :right-back-top)
+              (thumb-left-front :left-back-top))
+     ; smoothing polyhedron
+     (polyhedron [(key-right-back :right-front-top)
+                  (thumb-left-front :right-back-top)
+                  (thumb-left-front :left-back-top)
+                  (thumb-right-back :left-front-top)]
+                 [[0 2 1]
+                  [0 3 2]
+                  [0 1 3]
+                  [2 3 1]])
+     (web-tri (key-right-back :left-front-bottom)
+              (key-right-back :right-front-bottom)
+              (thumb-left-front :left-back-bottom)
+              (key-right-back :left-front-top)
+              (key-right-back :right-front-top)
+              (thumb-left-front :left-back-top))
+     (web-tri (key-right-back :left-front-bottom)
+              (thumb-left-front :left-back-bottom)
+              (key-left-front :right-back-bottom)
+              (key-right-back :left-front-top)
+              (thumb-left-front :left-back-top)
+              (key-left-front :right-back-top))
+     (web-tri (key-left-front :right-back-bottom)
+              (thumb-left-front :left-back-bottom)
+              (key-left-front :right-front-bottom)
+              (key-left-front :right-back-top)
+              (thumb-left-front :left-back-top)
+              (key-left-front :right-front-top))
+     (web-tri (key-left-front :right-front-bottom)
+              (thumb-left-front :left-back-bottom)
+              (thumb-left-front :left-front-bottom)
+              (key-left-front :right-front-top)
+              (thumb-left-front :left-back-top)
+              (thumb-left-front :left-front-top))
+     (web-tri (key-left-front :right-front-bottom)
+              (thumb-left-front :left-front-bottom)
+              (key-left-front :left-front-bottom)
+              (key-left-front :right-front-top)
+              (thumb-left-front :left-front-top)
+              (key-left-front :left-front-top))
+     ; this contains a devilish edge due to the extreme key z difference...
+     (web-tri (key-left-front :left-front-bottom)
+              (thumb-left-front :left-front-bottom)
+              (key-left2-front :right-front-bottom)
+              (key-left-front :left-front-top)
+              (thumb-left-front :left-front-top)
+              (key-left2-front :right-front-top))
+     ; ...this polyhedron smooths/fills this
+     (polyhedron [(key-left-front :left-front-top)
+                  (key-left-front :right-front-top)
+                  (thumb-left-front :left-front-top)
+                  (key-left2-front :right-front-top)]
+                 [[0 2 1]
+                  [1 2 3]
+                  [3 2 0]
+                  [0 1 3]]))))
 
 ; ---
 
-(defn thumb-wall-geom [place1 dcol1 drow1 post1 place2 dcol2 drow2 post2]
-  (union
-   (hull
-    (place1 post1)
-    (place1 (translate (wall-locate1 dcol1 drow1) post1))
-    (place1 (translate (wall-locate2 dcol1 drow1) post1))
-    (place1 (translate (wall-locate3 dcol1 drow1) post1))
-    (place2 post2)
-    (place2 (translate (wall-locate1 dcol2 drow2) post2))
-    (place2 (translate (wall-locate2 dcol2 drow2) post2))
-    (place2 (translate (wall-locate3 dcol2 drow2) post2)))
-   (bottom-hull
-    (place1 (translate (wall-locate2 dcol1 drow1) post1))
-    (place1 (translate (wall-locate3 dcol1 drow1) post1))
-    (place2 (translate (wall-locate2 dcol2 drow2) post2))
-    (place2 (translate (wall-locate3 dcol2 drow2) post2)))))
-
-(defn thumb-wall-brace [col1 row1 dcol1 drow1 post1 col2 row2 dcol2 drow2 post2]
-  (thumb-wall-geom (partial thumb-place col1 row1) dcol1 drow1 (post1 col1 row1)
-                   (partial thumb-place col2 row2) dcol2 drow2 (post2 col2 row2)))
-
-(def thumb-walls
-  (let [; this seems silly, but helps differentiate abs cols/rows vs deltas
-        firstcol 0
-        firstrow 0
-        lastcol (dec thumb-columns)
-        lastrow (dec thumb-rows)]
-    (union
-     ; there are no inner/left walls or webs; as this edge will be joined
-     ; outer walls (right, at middle)
-     (for [row (range 0 thumb-rows)]
-       (thumb-wall-brace lastcol row 1 0 thumb-web-post-tr
-                         lastcol row 1 0 thumb-web-post-br))
-     ; outer/right webs
-     (for [row (range 0 (dec thumb-rows))]
-       (->> (thumb-wall-brace lastcol row       1 0 thumb-web-post-br
-                              lastcol (inc row) 1 0 thumb-web-post-tr)
-            (translate [(- z-fighting) 0.0 0.0])))
-     ; back walls
-     (for [col (range 1 thumb-columns)]
-       (thumb-wall-brace col firstrow 0 1 thumb-web-post-tl
-                         col firstrow 0 1 thumb-web-post-tr))
-     ; back webs
-     (for [col (range 1 (dec thumb-columns))]
-       (->> (thumb-wall-brace col       firstrow 0 1 thumb-web-post-tr
-                              (inc col) firstrow 0 1 thumb-web-post-tl)
-            (translate [0.0 (- z-fighting) 0.0])))
-     ; front walls
-     (for [col (range 0 thumb-columns)]
-       (thumb-wall-brace col lastrow 0 -1 thumb-web-post-bl
-                         col lastrow 0 -1 thumb-web-post-br))
-     ; front webs
-     (for [col (range 0 (dec thumb-columns))]
-       (->> (thumb-wall-brace col       lastrow 0 -1 thumb-web-post-br
-                              (inc col) lastrow 0 -1 thumb-web-post-bl)
-            (translate [0.0 z-fighting 0.0])))
-     ; back-outer corner
-     (thumb-wall-brace lastcol firstrow 0 1 thumb-web-post-tr
-                       lastcol firstrow 1 0 thumb-web-post-tr)
-     ; front-outer corner
-     (thumb-wall-brace lastcol lastrow 1 0 thumb-web-post-br
-                       lastcol lastrow 0 -1 thumb-web-post-br)
-     ; front-left corner (helps the join)
-     (thumb-wall-brace firstcol lastrow -1 0 thumb-web-post-bl
-                       firstcol lastrow 0 -1 thumb-web-post-bl)
-     ; no back-inner corner; as this edge will be joined
-     )))
-
-(def join-walls
-  (let [last-col (dec key-columns)
-        front-col (dec last-col)
-        last-row (dec key-rows)
-        back-row (dec last-row)]
-    (union
-     ; front
-     (key-wall-geom (partial key-place front-col last-row)
-                    0
-                    -1
-                    (key-web-post-bl front-col last-row)
-                    (partial thumb-place 0 (inc 0))
-                    0
-                    -1
-                    (thumb-web-post-bl 0 (inc 0)))
-     ; back
-     (key-wall-geom (partial key-place last-col back-row)
-                    1
-                    0
-                    (key-web-post-tr last-col back-row)
-                    (partial thumb-place (inc 0) 0)
-                    0
-                    1
-                    (thumb-web-post-tl (inc 0) 0))
-     ; key to thumb... ugh
-     (hull
-      (key-edge-place last-col back-row key-web-post-tr)
-      (thumb-edge-place (inc 0) 0 thumb-web-post-tl)
-      (key-edge-place last-col back-row key-web-post-br))
-     (hull
-      (key-edge-place last-col back-row key-web-post-br)
-      (thumb-edge-place (inc 0) 0 thumb-web-post-tl)
-      (thumb-edge-place (inc 0) 0 thumb-web-post-bl))
-     (hull
-      (key-edge-place last-col back-row key-web-post-br)
-      (thumb-edge-place (inc 0) 0 thumb-web-post-bl)
-      (thumb-edge-place (inc 0) (inc 0) thumb-web-post-tl))
-     (hull
-      (key-edge-place last-col back-row key-web-post-br)
-      (thumb-edge-place (inc 0) (inc 0) thumb-web-post-tl)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tr))
-     (hull
-      (key-edge-place last-col back-row key-web-post-br)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tr)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tl))
-     (hull
-      (key-edge-place last-col back-row key-web-post-bl)
-      (key-edge-place last-col back-row key-web-post-br)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tl))
-     (hull
-      (key-edge-place last-col back-row key-web-post-bl)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tl)
-      (key-edge-place last-col last-row key-web-post-tl))
-     (hull
-      (key-edge-place front-col last-row key-web-post-tr)
-      (key-edge-place last-col last-row key-web-post-tl)
-      (key-edge-place front-col last-row key-web-post-br))
-     (hull
-      (key-edge-place last-col last-row key-web-post-tl)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tl)
-      (key-edge-place front-col last-row key-web-post-br))
-     (hull
-      (key-edge-place front-col last-row key-web-post-br)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-tl)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-bl))
-     (hull
-      (key-edge-place front-col last-row key-web-post-br)
-      (thumb-edge-place 0 (inc 0) thumb-web-post-bl)
-      (key-edge-place front-col last-row key-web-post-bl)))))
-
-(def thumbwall-visual
-  (union thumb-plates thumb-caps thumb-web-connectors thumb-walls))
-(spit "things/thumbwall-visual.scad" (write-scad (union keywall-visual thumbwall-visual join-walls)))
 
 (spit "things/left.scad"
       (write-scad (union key-plates
                          key-web-connectors
-                         key-walls
                          thumb-plates
                          thumb-web-connectors
-                         thumb-walls
-                         join-walls)))
+                         join-web-connectors
+                         ; key-walls
+                         ; thumb-walls
+                         ; join-walls
+                         )))
