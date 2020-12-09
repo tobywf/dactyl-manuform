@@ -10,8 +10,16 @@
                     [1 2 6 5]
                     [2 3 7 6]
                     [3 0 4 7]])
-(defn web-box [b0 b1 b2 b3 t4 t5 t6 t7]
-  (polyhedron [b0 b1 b2 b3 t4 t5 t6 t7] web-box-faces))
+(defn web-box [p0 p1 p2 p3]
+  (let [b0 (p0 :bottom)
+        b1 (p1 :bottom)
+        b2 (p2 :bottom)
+        b3 (p3 :bottom)
+        t0 (p0 :top)
+        t1 (p1 :top)
+        t2 (p2 :top)
+        t3 (p3 :top)]
+    (polyhedron [b0 b1 b2 b3 t0 t1 t2 t3] web-box-faces)))
 
 ; a triangular prism with arbitrary corners
 (def web-tri-faces [[0 1 4 3]
@@ -20,142 +28,108 @@
                     [2 1 0] ; bottom triangle
                     [3 4 5] ; top triangle
                     ])
-(defn web-tri [b0 b1 b2 t3 t4 t5]
-  (polyhedron [b0 b1 b2 t3 t4 t5] web-tri-faces))
+(defn web-tri [p0 p1 p2]
+  (let [b0 (p0 :bottom)
+        b1 (p1 :bottom)
+        b2 (p2 :bottom)
+        t0 (p0 :top)
+        t1 (p1 :top)
+        t2 (p2 :top)]
+    (polyhedron [b0 b1 b2 t0 t1 t2] web-tri-faces)))
 
 (defn web-connector-col [edges col row]
   (let [curr (edges [col row])
         next (edges [col (inc row)])]
-    (web-box (curr :left-front-bottom)
-             (curr :right-front-bottom)
-             (next :right-back-bottom)
-             (next :left-back-bottom)
-             (curr :left-front-top)
-             (curr :right-front-top)
-             (next :right-back-top)
-             (next :left-back-top))))
+    (web-box (curr :left-front)
+             (curr :right-front)
+             (next :right-back)
+             (next :left-back))))
 
 (defn web-connector-row [edges col row]
   (let [curr (edges [col row])
         next (edges [(inc col) row])]
-    (web-box (curr :right-back-bottom)
-             (next :left-back-bottom)
-             (next :left-front-bottom)
-             (curr :right-front-bottom)
-             (curr :right-back-top)
-             (next :left-back-top)
-             (next :left-front-top)
-             (curr :right-front-top))))
+    (web-box (curr :right-back)
+             (next :left-back)
+             (next :left-front)
+             (curr :right-front))))
 
 (defn web-connector-diag-square [edges col row]
   (let [a (edges [col row])
         b (edges [(inc col) row])
         c (edges [(inc col) (inc row)])
         d (edges [col (inc row)])]
-    (web-box (a :right-front-bottom)
-             (b :left-front-bottom)
-             (c :left-back-bottom)
-             (d :right-back-bottom)
-             (a :right-front-top)
-             (b :left-front-top)
-             (c :left-back-top)
-             (d :right-back-top))))
+    (web-box (a :right-front)
+             (b :left-front)
+             (c :left-back)
+             (d :right-back))))
 
 (defn web-connector-diag-left-back [edges col row]
   (let [a (edges [col row])
         b (edges [(inc col) row])
         c (edges [(inc col) (inc row)])]
-    (web-tri (a :right-front-bottom)
-             (b :left-front-bottom)
-             (c :left-back-bottom)
-             (a :right-front-top)
-             (b :left-front-top)
-             (c :left-back-top))))
+    (web-tri (a :right-front)
+             (b :left-front)
+             (c :left-back))))
 
 (defn web-connector-diag-right-back [edges col row]
   (let [a (edges [col row])
         b (edges [(inc col) row])
         d (edges [col (inc row)])]
-    (web-tri (a :right-front-bottom)
-             (b :left-front-bottom)
-             (d :right-back-bottom)
-             (a :right-front-top)
-             (b :left-front-top)
-             (d :right-back-top))))
+    (web-tri (a :right-front)
+             (b :left-front)
+             (d :right-back))))
 
 (defn web-connector-diag-left-front [edges col row]
   (let [b (edges [(inc col) row])
         c (edges [(inc col) (inc row)])
         d (edges [col (inc row)])]
-    (web-tri (b :left-front-bottom)
-             (c :left-back-bottom)
-             (d :right-back-bottom)
-             (b :left-front-top)
-             (c :left-back-top)
-             (d :right-back-top))))
+    (web-tri (b :left-front)
+             (c :left-back)
+             (d :right-back))))
 
 (defn web-connector-diag-right-front [edges col row]
   (let [a (edges [col row])
         c (edges [(inc col) (inc row)])
         d (edges [col (inc row)])]
-    (web-tri (a :right-front-bottom)
-             (c :left-back-bottom)
-             (d :right-back-bottom)
-             (a :right-front-top)
-             (c :left-back-top)
-             (d :right-back-top))))
+    (web-tri (a :right-front)
+             (c :left-back)
+             (d :right-back))))
 
 (defn web-connector-fill-right-front [edges col row]
   "Fills the key at col, row with a triangle prism to the right-front corner"
   (let [a (edges [col (dec row)])
         b (edges [(inc col) row])]
-    (web-box (a :left-front-bottom)
-             (a :right-front-bottom)
-             (b :left-back-bottom)
-             (b :left-front-bottom)
-             (a :left-front-top)
-             (a :right-front-top)
-             (b :left-back-top)
-             (b :left-front-top))))
+    (web-box (a :left-front)
+             (a :right-front)
+             (b :left-back)
+             (b :left-front))))
 
 (defn web-connector-fill-left-front [edges col row]
   "Fills the key at col, row with a triangle prism to the left-front corner"
   (let [a (edges [col (dec row)])
         b (edges [(dec col) row])]
-    (web-box (a :left-front-bottom)
-             (a :right-front-bottom)
-             (b :right-front-bottom)
-             (b :right-back-bottom)
-             (a :left-front-top)
-             (a :right-front-top)
-             (b :right-front-top)
-             (b :right-back-top))))
+    (web-box (a :left-front)
+             (a :right-front)
+             (b :right-front)
+             (b :right-back))))
 
 (defn web-connector-fill-right-back [edges col row]
   "Fills the key at col, row with a triangle prism to the right-back corner"
   (let [a (edges [(inc col) row])
         b (edges [col (inc row)])]
-    (web-box (a :left-back-bottom)
-             (a :left-front-bottom)
-             (b :right-back-bottom)
-             (b :left-back-bottom)
-             (a :left-back-top)
-             (a :left-front-top)
-             (b :right-back-top)
-             (b :left-back-top))))
+    (web-box (a :left-back)
+             (a :left-front)
+             (b :right-back)
+             (b :left-back))))
 
 (defn web-connector-fill-left-back [edges col row]
   "Fills the key at col, row with a triangle prism to the left-back corner"
   (let [a (edges [(dec col) row])
         b (edges [col (inc row)])]
-    (web-box (a :right-front-bottom)
-             (a :right-back-bottom)
-             (b :right-back-bottom)
-             (b :left-back-bottom)
-             (a :right-front-top)
-             (a :right-back-top)
-             (b :right-back-top)
-             (b :left-back-top))))
+    (web-box (a :right-front)
+             (a :right-back)
+             (b :right-back)
+             (b :left-back))))
 
 (defn web-connectors [cols rows edges skip? extra]
   (let [place? (fn [col row] (not (skip? col row)))]
