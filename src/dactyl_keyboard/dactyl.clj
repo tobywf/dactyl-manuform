@@ -41,8 +41,8 @@
 (def switch-hole-size 14.15)
 ; switch hole wall thickness - set this so two walls and the switch hole are the
 ; same size as a unit length keycap (~18.5mm)
-(def wall-thickness 2.35)
-(def keycap-size (+ switch-hole-size (* wall-thickness 2)))
+(def switch-hole-border 2.35)
+(def keycap-size (+ switch-hole-size (* switch-hole-border 2)))
 ; depth of the switch hole - 4mm is really the minimum for side nubs to work,
 ; 5mm is possible but might make soldering tricky. print the plate tester!
 (def plate-thickness 4.0)
@@ -56,9 +56,9 @@
 
 (defn key-plate [holes? nubs? width-multiplier]
   (let [; wall with hole for switch's retention tab
-        top-wall (->> (cube keycap-size wall-thickness plate-thickness)
+        top-wall (->> (cube keycap-size switch-hole-border plate-thickness)
                       (translate [0.0
-                                  (+ (/ wall-thickness 2) (/ switch-hole-size 2))
+                                  (+ (/ switch-hole-border 2) (/ switch-hole-size 2))
                                   (/ plate-thickness 2)]))
         ; hole for switch's retention tab
         retention-hole (->> (cube retention-hole-size
@@ -74,10 +74,10 @@
         plate-extra-width (* (/ keycap-size 2) (- width-multiplier 1))
         ; the wall width doesn't include the thickness/hole
         ; (for 1.0u, this will just be the wall thickness)
-        left-wall-width (+ wall-thickness plate-extra-width)
+        left-wall-width (+ switch-hole-border plate-extra-width)
         ; wall with optional side nub
         left-wall (->> (cube left-wall-width
-                             (+ switch-hole-size (* wall-thickness 2))
+                             (+ switch-hole-size (* switch-hole-border 2))
                              plate-thickness)
                        (translate [(+ (/ left-wall-width 2) (/ switch-hole-size 2))
                                    0.0
@@ -185,7 +185,8 @@
 ; a general depth/z offset, to adjust keys up after key-col-depth was applied
 (def key-col-z-offset 31.0)
 ; the tilt of each column in degrees
-(def key-col-tilt-deg [0 -5 -10 -10 -18 -28])
+; (make sure these are never exactly 0; important for wall geometry construction)
+(def key-col-tilt-deg [1 -5 -10 -10 -18 -28])
 ; small tweak to column spacing - useful to compensate for large differences
 ; in tilt between columns
 (def key-col-x-tweak [0.0 0.0 0.5 0.0 0.0 0.5])
@@ -383,9 +384,9 @@
 (def thumbwell-visual (union thumb-plates thumb-caps))
 (spit "things/thumbwell-visual.scad" (write-scad thumbwell-visual))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Key Well Web Connectors ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Key/Thumb Web Connectors ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; --- main options
 
@@ -426,10 +427,6 @@
 (def keywell-tester (union test-key-plates key-web-connectors))
 (spit "things/keywell-tester.scad" (write-scad keywell-tester))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Thumb Cluster Web Connectors ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 ; pre-calculate all edge points for a single thumb plate
 (defn thumb-edge [col row]
   (let [keycap-height (* keycap-size (thumb-shape-height col row))
@@ -459,9 +456,203 @@
 (def thumbwell-tester (union test-thumb-plates thumb-web-connectors))
 (spit "things/thumbwell-tester.scad" (write-scad thumbwell-tester))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Join Web Connectors ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
+;; Key/Thumb Walls ;;
+;;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+(def wall-thickness 6.0)
+
+; ---
+
+(defmacro quote-points [& points]
+  {:keywords (mapv keyword points) :values (mapv identity points)})
+
+(defn nice-poly [quoted-points faces]
+  (let [kw-to-index (into {} (map-indexed (fn [index item] {item index})
+                                          (quoted-points :keywords)))
+        points (quoted-points :values)
+        faces (mapv (fn [face] (mapv kw-to-index face)) faces)]
+    (polyhedron points faces)))
+
+(defn displace [point dir amount]
+  (let [coords (case dir
+                 :left [(- amount) 0.0 0.0]
+                 :right [amount 0.0 0.0]
+                 :front [0.0 (- amount) 0.0]
+                 :back [0.0 amount 0.0])]
+    (mapv + point coords)))
+
+(defn vertical-align [bottom top dir]
+  (let [[bx by bz] bottom
+        [tx ty tz] top
+        ; cheat: invent an "alignment" for straight edges, so geometry works
+        cheat (displace top dir 0.1)]
+    (case dir
+      :left (cond (> bx tx) (throw (Exception. "Can't valign convex edge (left)"))
+                  (< bx tx) [bx ty (+ bz plate-thickness)]
+                  :equal cheat)
+      :right (cond (< bx tx) (throw (Exception. "Can't valign convex edge (right)"))
+                   (> bx tx) [bx ty (+ bz plate-thickness)]
+                   :equal cheat)
+      :front (cond (> by ty) (throw (Exception. "Can't valign convex edge (front)"))
+                   (< by ty) [tx by (+ bz plate-thickness)]
+                   :equal cheat)
+      :back (cond (< by ty) (throw (Exception. "Can't valign convex edge (back)"))
+                  (> by ty) [tx by (+ bz plate-thickness)]
+                  :equal cheat))))
+
+(defn project-z [point] [(point 0) (point 1) 0.0])
+
+(defn construct-wall [edge0 dir0 edge1 dir1]
+  (let [b0 (edge0 :bottom)
+        t0 (edge0 :top)
+        b1 (edge1 :bottom)
+        t1 (edge1 :top)
+        ; valign
+        v0 (vertical-align b0 t0 dir0)
+        v1 (vertical-align b1 t1 dir1)
+        ; chamfer/extrude
+        c0 (displace b0 dir0 wall-thickness)
+        c1 (displace b1 dir1 wall-thickness)
+        ; project floor
+        pb0 (project-z b0)
+        pc0 (project-z c0)
+        pb1 (project-z b1)
+        pc1 (project-z c1)
+        points (quote-points b0 b1 t0 t1 v0 v1 c0 c1 pb0 pb1 pc0 pc1)]
+    (nice-poly points
+               [[:b0 :c0 :v0 :t0] ; edge0 valign/chamfer
+                [:b1 :t1 :v1 :c1] ; edge1 valign/chamfer
+                [:b0 :t0 :t1 :b1] ; edge0/edge1 face
+                [:t0 :v0 :v1 :t1] ; valign top
+                [:c0 :c1 :v1 :v0] ; chamfer out
+                [:b0 :b1 :pb1 :pb0] ; edge0/edge1 project
+                [:b0 :pb0 :pc0 :c0] ; edge0 project
+                [:b1 :c1 :pc1 :pb1] ; edge1 project
+                [:c1 :c0 :pc0 :pc1] ; chamfer project
+                [:pb0 :pb1 :pc1 :pc0]])))
+
+(defn construct-corner [edge0 dir0 dir1]
+  (let [b0 (edge0 :bottom)
+        t0 (edge0 :top)
+        ; valign
+        v0 (vertical-align b0 t0 dir0)
+        v1 (vertical-align b0 t0 dir1)
+        ; chamfer/extrude
+        c0 (displace b0 dir0 wall-thickness)
+        c1 (displace b0 dir1 wall-thickness)
+        ; project floor
+        pb0 (project-z b0)
+        pc0 (project-z c0)
+        pc1 (project-z c1)
+        points (quote-points b0 t0 v0 v1 c0 c1 pb0 pc0 pc1)]
+    (nice-poly points
+               [[:b0 :c0 :v0 :t0] ; dir0 valign/chamfer wall
+                [:b0 :t0 :v1 :c1] ; dir1 valign/chamfer wall
+                [:t0 :v0 :v1] ; valign top
+                [:v1 :v0 :c0 :c1] ; valign/chamfer out
+                [:c0 :b0 :pb0 :pc0] ; dir0 project wall
+                [:b0 :c1 :pc1 :pb0] ; dir1 project wall
+                [:c1 :c0 :pc0 :pc1] ; project out
+                [:pc1 :pc0 :pb0]])))
+
+(def key-walls
+  (let [firstcol 0
+        firstrow 0
+        lastcol (dec key-columns)
+        lastrow (dec key-rows)]
+    (union
+     ; outer walls (left, at pinky keys)
+     ; skip last row (pinky corner)
+     (for [row (range 0 (- key-rows 1))]
+       (construct-wall ((key-edges [firstcol row]) :left-front) :left
+                       ((key-edges [firstcol row]) :left-back) :left))
+     ; outer webs (connect from back to front, current to next)
+     ; skip last row (skipped pinky corner will fill this)
+     (for [row (range 0 (- key-rows 2))]
+       (construct-wall ((key-edges [firstcol (inc row)]) :left-back) :left
+                       ((key-edges [firstcol row]) :left-front) :left))
+     ; inner walls (right, at thumb cluster)
+     ; skip last two rows (thumb cluster join)
+     (for [row (range 0 (- key-rows 2))]
+       (construct-wall ((key-edges [lastcol row]) :right-back) :right
+                       ((key-edges [lastcol row]) :right-front) :right))
+     ; inner webs (connect from back to front, current to next)
+     ; skip last two rows (thumb cluster join)
+     (for [row (range 0 (- key-rows 2))]
+       (construct-wall ((key-edges [lastcol row]) :right-front) :right
+                       ((key-edges [lastcol (inc row)]) :right-back) :right))
+     ; back walls
+     (for [col (range 0 key-columns)]
+       (construct-wall ((key-edges [col firstrow]) :left-back) :back
+                       ((key-edges [col firstrow]) :right-back) :back))
+     ; back webs (connect from outer to inner, current to next)
+     (for [col (range 0 (- key-columns 1))]
+       (construct-wall ((key-edges [col firstrow]) :right-back) :back
+                       ((key-edges [(inc col) firstrow]) :left-back) :back))
+     ; front walls
+     ; skip first col (pinky corner)
+     ; skip last col (thumb cluster join)
+     (for [col (range 1 (- key-columns 2))]
+       (construct-wall ((key-edges [col lastrow]) :right-front) :front
+                       ((key-edges [col lastrow]) :left-front) :front))
+     ; front webs (connect from outer to inner, current to next)
+     ; skip first col (pinky corner)
+     ; skip last col (thumb cluster join)
+     (for [col (range 1 (- key-columns 2))]
+       (construct-wall ((key-edges [(inc col) lastrow]) :left-front) :front
+                       ((key-edges [col lastrow]) :right-front) :front))
+     ; front-outer corner (spans across the missing pinky corner)
+     (construct-wall ((key-edges [(inc firstcol) lastrow]) :left-front) :front
+                     ((key-edges [firstcol (dec lastrow)]) :left-front) :left)
+     ; no front-inner corner; that's where the thumb cluster join is
+     ; back-outer corner
+     (construct-corner ((key-edges [firstcol firstrow]) :left-back) :left :back)
+     ; back-inner corner
+     (construct-corner ((key-edges [lastcol firstrow]) :right-back) :back :right))))
+
+(def thumb-walls
+  (let [firstcol 0
+        firstrow 0
+        lastcol (dec thumb-columns)
+        lastrow (dec thumb-rows)]
+    (union
+     ; outer walls (right, away from keys)
+     (for [row (range 0 thumb-rows)]
+       (construct-wall ((thumb-edges [lastcol row]) :right-back) :right
+                       ((thumb-edges [lastcol row]) :right-front) :right))
+     ; outer webs (connect from back to front, current to next)
+     (for [row (range 0 (- thumb-rows 1))]
+       (construct-wall ((thumb-edges [lastcol row]) :right-front) :right
+                       ((thumb-edges [lastcol (inc row)]) :right-back) :right))
+     ; no inner walls (thumb cluster join)
+     ; back walls
+     ; skip first col (thumb cluster join)
+     (for [col (range 1 thumb-columns)]
+       (construct-wall ((thumb-edges [col firstrow]) :left-back) :back
+                       ((thumb-edges [col firstrow]) :right-back) :back))
+     ; back webs (connect from outer to inner, current to next)
+     (for [col (range 1 (- thumb-columns 1))]
+       (construct-wall ((thumb-edges [col firstrow]) :right-back) :back
+                       ((thumb-edges [(inc col) firstrow]) :left-back) :back))
+     ; front walls
+     (for [col (range 0 thumb-columns)]
+       (construct-wall ((thumb-edges [col lastrow]) :right-front) :front
+                       ((thumb-edges [col lastrow]) :left-front) :front))
+     ; front webs (connect from outer to inner, current to next)
+     (for [col (range 0 (- thumb-columns 1))]
+       (construct-wall ((thumb-edges [(inc col) lastrow]) :left-front) :front
+                       ((thumb-edges [col lastrow]) :right-front) :front))
+     ; back-outer corner
+     (construct-corner ((thumb-edges [lastcol firstrow]) :right-back) :back :right)
+     ; front-outer corner
+     (construct-corner ((thumb-edges [lastcol lastrow]) :right-front) :right :front))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Key/Thumb Join Geometry ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def join-web-connectors
   (let [last-col (dec key-columns)
@@ -469,13 +660,8 @@
         key-right-back (key-edges [last-col (dec last-row)])
         key-left-front (key-edges [(dec last-col) last-row])
         thumb-right-back (thumb-edges [1 0])
-        thumb-left-front (thumb-edges [0 1])
-        key-right-back2 (key-edges [last-col (- last-row 2)])
-        key-left2-front (key-edges [(- last-col 2) last-row])]
+        thumb-left-front (thumb-edges [0 1])]
     (union
-     (web-tri (key-right-back2 :right-front)
-              (thumb-right-back :left-back)
-              (key-right-back :right-back))
      (web-tri (key-right-back :right-back)
               (thumb-right-back :left-back)
               (key-right-back :right-front))
@@ -511,31 +697,27 @@
               (thumb-left-front :left-front))
      (web-tri (key-left-front :right-front)
               (thumb-left-front :left-front)
-              (key-left-front :left-front))
-     ; this contains a devilish edge due to the extreme key z difference...
-     (web-tri (key-left-front :left-front)
-              (thumb-left-front :left-front)
-              (key-left2-front :right-front))
-     ; ...this polyhedron smooths/fills this
-     (polyhedron [((key-left-front :left-front) :top)
-                  ((key-left-front :right-front) :top)
-                  ((thumb-left-front :left-front) :top)
-                  ((key-left2-front :right-front) :top)]
-                 [[0 2 1]
-                  [1 2 3]
-                  [3 2 0]
-                  [0 1 3]]))))
+              (key-left-front :left-front)))))
+
+(def join-walls
+  (union
+   ; front wall
+   (construct-wall ((thumb-edges [0 (- thumb-rows 1)]) :left-front) :front
+                   ((key-edges [(- key-columns 2) (- key-rows 1)]) :left-front) :front)
+   ; back wall
+   (construct-wall ((key-edges [(- key-columns 1) (- key-rows 2)]) :right-back) :right
+                   ((thumb-edges [1 0]) :left-back) :back)))
 
 ; ---
 
 
 (spit "things/left.scad"
-      (write-scad (union key-plates
-                         key-web-connectors
-                         thumb-plates
-                         thumb-web-connectors
-                         join-web-connectors
-                         ; key-walls
-                         ; thumb-walls
-                         ; join-walls
-                         )))
+      (write-scad (union
+                   ; key-plates
+                   ; thumb-plates
+                   key-web-connectors
+                   thumb-web-connectors
+                   join-web-connectors
+                   key-walls
+                   thumb-walls
+                   join-walls)))
