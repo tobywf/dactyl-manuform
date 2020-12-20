@@ -319,12 +319,12 @@
   [(+ (/ keycap-size 2) (thumb-cluster-key-join 0))
    (+ (/ keycap-size -2) (thumb-cluster-key-join 1))
    thumb-cluster-offset-z])
-(def thumb-cluster-rotate (deg2rad -20))
+(def thumb-cluster-rotate-angle (deg2rad -20))
 
 ; ---
 
-(def thumb-cluster-rotate-sin (Math/sin thumb-cluster-rotate))
-(def thumb-cluster-rotate-cos (Math/cos thumb-cluster-rotate))
+(def thumb-cluster-rotate-sin (Math/sin thumb-cluster-rotate-angle))
+(def thumb-cluster-rotate-cos (Math/cos thumb-cluster-rotate-angle))
 
 ; the thumb plates run 90 degrees to the ones in the main well. ideally, the
 ; switch mounts wouldn't be rotated, but that doesn't seem bad enough to fix
@@ -345,8 +345,16 @@
     ; invert row, so row 0 is at the front (y positive) and row 2 is at the
     ; back (y negative)
     (->> shape (translate [x (- y) z])
-         (rotate thumb-cluster-rotate [0 0 1])
+         (rotate thumb-cluster-rotate-angle [0 0 1])
          (translate thumb-cluster-offset))))
+
+(defn thumb-cluster-rotate [position]
+  (let [[x-pos y-pos z-pos] position
+        x-rot (- (* x-pos thumb-cluster-rotate-cos)
+                 (* y-pos thumb-cluster-rotate-sin))
+        y-rot (+ (* x-pos thumb-cluster-rotate-sin)
+                 (* y-pos thumb-cluster-rotate-cos))]
+    [x-rot y-rot z-pos]))
 
 (defn thumb-position [col row position]
   (let [; this  can be used to project a point other than the center
@@ -362,10 +370,7 @@
         y-local (- (+ y-prev (/ (* thumb-row-spaced diff) 2) y-pos))
         z-local (thumb-z-offset col row)
         ; apply cluster rotation manually (around z, in x/y)
-        x-rot (- (* x-local thumb-cluster-rotate-cos)
-                 (* y-local thumb-cluster-rotate-sin))
-        y-rot (+ (* x-local thumb-cluster-rotate-sin)
-                 (* y-local thumb-cluster-rotate-cos))
+        [x-rot y-rot _] (thumb-cluster-rotate [x-local y-local 0.0])
         ; apply cluster offset manually
         [x-offset y-offset z-offset] thumb-cluster-offset
         x-global (+ x-rot x-offset)
