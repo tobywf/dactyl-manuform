@@ -3,10 +3,15 @@
   (:require [dactyl-keyboard.holders :refer :all]
             [dactyl-keyboard.web :refer :all]
             [scad-clj.scad :refer :all]
-            [scad-clj.model :refer :all]))
+            [scad-clj.model :refer :all :rename {cylinder cylinder-base sphere sphere-base}]))
 
 (defn deg2rad [degrees]
   (* (/ degrees 180) pi))
+
+(defn cylinder [fn rs h & {:keys [center] :or {center true}}]
+  (with-fn fn (cylinder-base rs h :center center)))
+
+(defn sphere [fn r] (with-fn fn (sphere-base r)))
 
 ;;;;;;;;;;;;;;;;;
 ;; Conventions ;;
@@ -83,7 +88,7 @@
                                    0.0
                                    (/ plate-thickness 2)]))
         ; side nub (wedge and rounded bottom)
-        side-nub (->> (with-fn 30 (cylinder 1.0 2.75))
+        side-nub (->> (cylinder 30 1.0 2.75)
                       (rotate (/ pi 2) [1 0 0])
                       (translate [(+ (/ switch-hole-size 2)) 0 1])
                       (hull (->> (cube 1.5 2.75 side-nub-depth)
