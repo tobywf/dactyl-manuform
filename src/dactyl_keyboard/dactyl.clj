@@ -3,15 +3,19 @@
   (:require [dactyl-keyboard.holders :refer :all]
             [dactyl-keyboard.web :refer :all]
             [scad-clj.scad :refer :all]
-            [scad-clj.model :refer :all :rename {cylinder cylinder-base sphere sphere-base}]))
+            [scad-clj.model
+             :refer :all
+             :rename {cylinder cylinder-base
+                      sphere sphere-base
+                      circle circle-base}]))
 
 (defn deg2rad [degrees]
   (* (/ degrees 180) pi))
 
 (defn cylinder [fn rs h & {:keys [center] :or {center true}}]
   (with-fn fn (cylinder-base rs h :center center)))
-
 (defn sphere [fn r] (with-fn fn (sphere-base r)))
+(defn circle [fn r] (with-fn fn (circle-base r)))
 
 ;;;;;;;;;;;;;;;;;
 ;; Conventions ;;
@@ -729,21 +733,15 @@
 
 ; ---
 
-(defn usb-holder-translate [shape]
+(def usb-holder-translate
   (let [edges (key-edges [(- key-columns 2) 0])
         ; find mid-point (roughly)
         pos-l ((edges :left-back) :bottom)
         pos-r ((edges :right-back) :bottom)
         pos (mapv (fn [a b] (/ (+ a b) 2)) pos-l pos-r)
-        pos [(+ (pos 0) holder-x-offset)
-             (+ (pos 1) holder-y-offset)
-             0.0]]
-    (translate pos shape)))
-
-(def key-walls
-  (difference (union key-walls
-                     (usb-holder-translate usb-holder-wall))
-              (usb-holder-translate usb-holder-slot)))
+        pos (project-z pos)
+        offset [holder-x-offset holder-y-offset 0.0]]
+    (mapv + pos offset)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Bottom Plate Screw Holes ;;
@@ -755,7 +753,7 @@
 ; structure for the screws to grab onto. my inserts are quite skinny, so this
 ; diameter is big enough to clear the screw threads and the insert, but small
 ; enough to support the insert melting into the plastic
-(def screw-insert-inner (/ 3.5 2))
+(def screw-insert-inner (/ 4.0 2))
 ; my hot-melt insert diameter is 4.6mm, so 8.0mm should be enough
 (def screw-insert-outer (/ 8.0 2))
 ; maximum depth of the screw (without the bottom-plate thickness)
@@ -769,12 +767,14 @@
     (translate pos shape)))
 
 (def screw-insert
-  (let [outer (cylinder 30 screw-insert-outer
-                           screw-insert-depth
-                           :center false)
-        inner (cylinder 30 screw-insert-inner
-                           (+ screw-insert-depth z-fighting)
-                           :center false)
+  (let [outer (cylinder 30
+                        screw-insert-outer
+                        screw-insert-depth
+                        :center false)
+        inner (cylinder 30
+                        screw-insert-inner
+                        (+ screw-insert-depth z-fighting)
+                        :center false)
         inner (translate [0.0 0.0 (/ z-fighting -2)] inner)
         cap-cut (cube (* screw-insert-outer 2)
                       (* screw-insert-outer 2)
@@ -784,7 +784,7 @@
         cap (translate [0.0 0.0 (- screw-insert-depth z-fighting)] cap)]
     (union (difference outer inner) cap)))
 
-(def screw-cutout (with-fn 30 (circle screw-insert-inner)))
+(def screw-cutout (circle 30 screw-insert-inner))
 
 (def screw-insert-place (partial screw-place-shape screw-insert))
 (def screw-cutout-place (partial screw-place-shape screw-cutout))
@@ -822,16 +822,167 @@
 (spit "things/screw-tester.scad"
       (write-scad (screw-insert-place {:bottom [0.0 0.0 0.0]} [0.0 0.0 0.0])))
 
+;;;;;;;;;;;;;;;;
+;; Wrist Rest ;;
+;;;;;;;;;;;;;;;;
+
+; --- main options
+
+; my wrist rests are the commonly-available kidney-shaped gel ones. these
+; dimensions are just used to visualise the kidney shape fits, and offset it
+(def wrist-rest-width 110.0)
+(def wrist-rest-height 78.0)
+; this is however used
+(def wrist-rest-depth thumb-cluster-offset-z)
+
+; the smaller diameter of the outer lobes
+(def wrist-body-diameter 60.0)
+; the angle of the outer lobes
+(def wrist-layout-angle (deg2rad 25.0))
+
+; connects the body to the rest
+; "thickness" of the connecting rod/box when viewed from top
+(def wrist-connector-width 20.0)
+; "length" of the connecting rod/box when viewed from top
+(def wrist-connector-height 60.0)
+(def wrist-connector-depth 10.0)
+; the bottom gap; to clear the base plate of the keyboard. this should be as
+; close to the thickness of the actual base plate, but this isn't always
+; possible to know. so the gap can be a bit bigger to definitely clear the
+; plate, and the tolerance will allow the join to move up if the plate is
+; thinner. the gap could be shimmed with e.g. foam to prevent rattling
+(def wrist-connector-gap 3.0)
+(def wrist-connector-tol 2.0)
+
+(def wrist-join-reenforce-radius (/ 15.0 2))
+(def wrist-join-slot-radius (/ wrist-join-reenforce-radius 3))
+(def wrist-join-clearance 0.2)
+
+
 ; ---
 
 
+(def wrist-join-wall
+  (let [offset (/ (+ wrist-connector-width wrist-join-clearance) 2)
+        depth (+ wrist-connector-depth wrist-connector-tol)
+        post (union (translate [offset 0.0 0.0]
+                               (cylinder 60
+                                         wrist-join-reenforce-radius
+                                         depth
+                                         :center false))
+                    (translate [offset 0.0 depth]
+                               (sphere 60 wrist-join-reenforce-radius))
+                    (->> (cylinder 60
+                                   wrist-join-reenforce-radius
+                                   offset
+                                   :center false)
+                         (rotate (deg2rad 90.0) [0 1 0])
+                         (translate [0.0 0.0 depth])))]
+    (union post (mirror [1 0 0] post))))
+
+(def wrist-join-slot
+  (let [offset (/ (+ wrist-connector-width wrist-join-clearance) 2)
+        depth (+ wrist-connector-depth wrist-connector-tol)
+        slot-radius (+ wrist-join-slot-radius (/ wrist-join-clearance 2))
+        slot (translate [offset 0.0 (- z-fighting)]
+                        (cylinder 60
+                                  slot-radius
+                                  (+ depth z-fighting)
+                                  :center false))
+        join (cube (+ wrist-connector-width (* wrist-join-clearance 2))
+                   (* wrist-join-reenforce-radius 2)
+                   (* depth 2))]
+    (union slot (mirror [1 0 0] slot) join)))
+
+(def wrist-body-radius (/ wrist-body-diameter 2))
+(def wrist-layout-radius wrist-body-diameter)
+(def wrist-layout-steps
+  [-1.0 -0.9 -0.8 -0.7 -0.6 -0.5 -0.4 -0.3 -0.2 -0.1 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0])
+
+; this function seems to produce the same curvature as the back when multiplied
+; with the layout radius. f(0.0) = 0.9, f(1.0) = f(-1.0) = 1.0
+(defn wrist-plot-back [x]
+  (let [x-prime (/ x (Math/sqrt 10))] (+ 0.9 (* x-prime x-prime))))
+
+(defn wrist-rest-circle-back [lerp]
+  (let [shape-layout-radius (- (* wrist-body-diameter (wrist-plot-back lerp)) 2.5)]
+    (->> (circle 60 wrist-body-radius)
+         (translate [0.0 (- wrist-layout-radius) 0.0])
+         (rotate (* wrist-layout-angle (* lerp 0.95)) [0 0 1])
+         (translate [0.0 shape-layout-radius 0.0]))))
+
+(defn wrist-rest-circle-front [lerp]
+  (let [shape-layout-radius (- wrist-body-diameter 2.5)]
+    (->> (circle 60 wrist-body-radius)
+         (translate [0.0 (- shape-layout-radius) 0.0])
+         (rotate (* wrist-layout-angle lerp) [0 0 1])
+         (translate [0.0 wrist-layout-radius 0.0]))))
+
+(def wrist-rest-bounding-box
+  (color [0/255 0/255 255/255 0.2] (cube wrist-rest-width wrist-rest-height 1.0)))
+
+(def wrist-rest-base
+  (union
+   (for [lerp wrist-layout-steps] (wrist-rest-circle-back lerp))
+   (for [lerp wrist-layout-steps] (wrist-rest-circle-front lerp))))
+
+(def wrist-connector
+  (translate [(/ wrist-connector-width -2) -10.0 0.0]
+             (cube wrist-connector-width
+                   wrist-connector-height
+                   wrist-connector-depth
+                   :center false)))
+
+(def wrist-rest
+  (let [rest (extrude-linear {:height wrist-rest-depth
+                              :twist 0
+                              :convexity 3
+                              :center false}
+                             wrist-rest-base)
+        conn-offset (- wrist-connector-height 10.0 wrist-join-reenforce-radius)
+        rest-offset (+ (/ wrist-rest-height 2) conn-offset)
+        join-offset (/ wrist-connector-width 2)
+        join (translate [join-offset 0.0 0.0]
+                        (cylinder 30
+                                  wrist-join-slot-radius
+                                  wrist-connector-depth
+                                  :center false))]
+    (union (translate [0.0 (- rest-offset) (- wrist-connector-gap)] rest)
+           (translate [0.0 (- conn-offset) 0.0] wrist-connector)
+           join
+           (mirror [1 0 0] join))))
+
+(def wrist-join-translate
+  (displace (project-z (((key-edges [2 (dec key-rows)]) :right-front) :bottom))
+            :front
+            (/ wall-thickness 2)))
+
+(def key-walls
+  (difference (union key-walls
+                     (translate usb-holder-translate usb-holder-wall)
+                     (translate wrist-join-translate wrist-join-wall))
+              (translate usb-holder-translate usb-holder-slot)
+              (translate wrist-join-translate wrist-join-slot)))
+
+(def wrist-tester
+  (let [wall (translate [0.0 (* wrist-join-reenforce-radius 2.5) 0.0]
+                        (difference wrist-join-wall wrist-join-slot))
+        join (difference wrist-rest
+                         (translate [0.0 (- -250.0 wrist-join-reenforce-radius) 0.0]
+                                    (cube 500.0 500.0 500.0)))]
+    (union wall join)))
+(spit "things/wrist-tester.scad" (write-scad wrist-tester))
+
+; ---
+
 (spit "things/left.scad"
       (write-scad (union
-                   ; key-plates
-                   ; thumb-plates
+                   key-plates
+                   thumb-plates
                    key-web-connectors
                    thumb-web-connectors
                    join-web-connectors
                    key-walls
                    thumb-walls
-                   join-walls)))
+                   join-walls
+                   screw-inserts)))
