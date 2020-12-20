@@ -396,7 +396,8 @@
 
 ; the visual thumb cluster representation is good for checking clearances
 (def thumbwell-visual (union thumb-plates thumb-caps))
-(spit "things/thumbwell-visual.scad" (write-scad thumbwell-visual))
+(spit "things/thumbwell-visual.scad"
+      (write-scad (union keywell-visual thumbwell-visual)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Key/Thumb Web Connectors ;;
@@ -753,46 +754,48 @@
 ; structure for the screws to grab onto. my inserts are quite skinny, so this
 ; diameter is big enough to clear the screw threads and the insert, but small
 ; enough to support the insert melting into the plastic
-(def screw-insert-inner (/ 4.0 2))
+(def screw-post-inner (/ 4.0 2))
 ; my hot-melt insert diameter is 4.6mm, so 8.0mm should be enough
-(def screw-insert-outer (/ 8.0 2))
+(def screw-post-outer (/ 8.0 2))
 ; maximum depth of the screw (without the bottom-plate thickness)
-(def screw-insert-depth 10.0)
+(def screw-post-depth 10.0)
 
 ; ---
 
 (defn screw-place-shape [shape edge displace-pos]
-  (let [insert-pos (project-z (edge :bottom))
-        pos (mapv + insert-pos displace-pos)]
-    (translate pos shape)))
+  (let [insert-pos (project-z (edge :bottom))]
+    (translate (mapv + insert-pos displace-pos) shape)))
 
-(def screw-insert
+(def screw-post
   (let [outer (cylinder 30
-                        screw-insert-outer
-                        screw-insert-depth
+                        screw-post-outer
+                        screw-post-depth
                         :center false)
         inner (cylinder 30
-                        screw-insert-inner
-                        (+ screw-insert-depth z-fighting)
+                        screw-post-inner
+                        (+ screw-post-depth z-fighting)
                         :center false)
         inner (translate [0.0 0.0 (/ z-fighting -2)] inner)
-        cap-cut (cube (* screw-insert-outer 2)
-                      (* screw-insert-outer 2)
-                      (+ screw-insert-outer z-fighting))
-        cap (difference (sphere 30 screw-insert-outer)
-                        (translate [0.0 0.0 (/ screw-insert-outer -2)] cap-cut))
-        cap (translate [0.0 0.0 (- screw-insert-depth z-fighting)] cap)]
+        cap-cut (cube (* screw-post-outer 2)
+                      (* screw-post-outer 2)
+                      (+ screw-post-outer z-fighting))
+        cap (difference (sphere 30 screw-post-outer)
+                        (translate [0.0 0.0 (/ screw-post-outer -2)] cap-cut))
+        cap (translate [0.0 0.0 (- screw-post-depth z-fighting)] cap)]
     (union (difference outer inner) cap)))
 
-(def screw-cutout (circle 30 screw-insert-inner))
+; used to cut out from base plate
+(def screw-hole (circle 30 screw-post-inner))
 
-(def screw-insert-place (partial screw-place-shape screw-insert))
-(def screw-cutout-place (partial screw-place-shape screw-cutout))
+(def screw-post-place (partial screw-place-shape screw-post))
+(def screw-hole-place (partial screw-place-shape screw-hole))
 
+; calculate one or two displacements for keys (simple)
 (defn key-displace [dir0 dir1]
-  (let [offset (displace [0.0 0.0 0.0] dir0 (- screw-insert-inner))]
-    (if (nil? dir1) offset (displace offset dir1 (- screw-insert-inner)))))
+  (let [offset (displace [0.0 0.0 0.0] dir0 (- screw-post-inner))]
+    (if (nil? dir1) offset (displace offset dir1 (- screw-post-inner)))))
 
+; calculate one or two displacements for thumbs (need to factor in rotation)
 (defn thumb-displace [dir0 dir1]
   (thumb-cluster-rotate (key-displace dir0 dir1)))
 
@@ -812,15 +815,14 @@
    [((thumb-edges [(- thumb-columns 1) (- thumb-rows 1)]) :right-front) (thumb-displace :right :front)]
    [((thumb-edges [0 (- thumb-rows 1)]) :left-front) (thumb-displace :left :front)]])
 
-(def screw-inserts
-  (union (mapv (fn [args] (apply screw-insert-place args)) screw-positions)))
+(def screw-posts
+  (union (mapv (fn [args] (apply screw-post-place args)) screw-positions)))
 
-; used to cut out from base plate
-(def screw-cutouts
-  (union (mapv (fn [args] (apply screw-cutout-place args)) screw-positions)))
+(def screw-holes
+  (union (mapv (fn [args] (apply screw-hole-place args)) screw-positions)))
 
 (spit "things/screw-tester.scad"
-      (write-scad (screw-insert-place {:bottom [0.0 0.0 0.0]} [0.0 0.0 0.0])))
+      (write-scad (screw-post-place {:bottom [0.0 0.0 0.0]} [0.0 0.0 0.0])))
 
 ;;;;;;;;;;;;;;;;
 ;; Wrist Rest ;;
@@ -858,9 +860,7 @@
 (def wrist-join-slot-radius (/ wrist-join-reenforce-radius 3))
 (def wrist-join-clearance 0.2)
 
-
 ; ---
-
 
 (def wrist-join-wall
   (let [offset (/ (+ wrist-connector-width wrist-join-clearance) 2)
@@ -877,8 +877,13 @@
                                    offset
                                    :center false)
                          (rotate (deg2rad 90.0) [0 1 0])
-                         (translate [0.0 0.0 depth])))]
-    (union post (mirror [1 0 0] post))))
+                         (translate [0.0 0.0 depth])))
+        ; makes this section solid in the base plate projection
+        fill (translate [0.0 0.0 (/ depth 2)]
+                        (cube (+ wrist-connector-width (* wrist-join-clearance 2))
+                              (* wrist-join-reenforce-radius 2)
+                              depth))]
+    (union post (mirror [1 0 0] post) fill)))
 
 (def wrist-join-slot
   (let [offset (/ (+ wrist-connector-width wrist-join-clearance) 2)
@@ -890,7 +895,7 @@
                                   (+ depth z-fighting)
                                   :center false))
         join (cube (+ wrist-connector-width (* wrist-join-clearance 2))
-                   (* wrist-join-reenforce-radius 2)
+                   (* (+ wrist-join-reenforce-radius z-fighting) 2)
                    (* depth 2))]
     (union slot (mirror [1 0 0] slot) join)))
 
@@ -957,10 +962,13 @@
             :front
             (/ wall-thickness 2)))
 
+(def key-walls-filled
+  (union key-walls
+         (translate usb-holder-translate usb-holder-wall)
+         (translate wrist-join-translate wrist-join-wall)))
+
 (def key-walls
-  (difference (union key-walls
-                     (translate usb-holder-translate usb-holder-wall)
-                     (translate wrist-join-translate wrist-join-wall))
+  (difference key-walls-filled
               (translate usb-holder-translate usb-holder-slot)
               (translate wrist-join-translate wrist-join-slot)))
 
@@ -971,18 +979,83 @@
                          (translate [0.0 (- -250.0 wrist-join-reenforce-radius) 0.0]
                                     (cube 500.0 500.0 500.0)))]
     (union wall join)))
-(spit "things/wrist-tester.scad" (write-scad wrist-tester))
+(spit "things/wrist-join-tester.scad" (write-scad wrist-tester))
 
-; ---
+(spit "things/wrist-rest.scad" (write-scad wrist-rest))
 
-(spit "things/left.scad"
-      (write-scad (union
-                   key-plates
-                   thumb-plates
-                   key-web-connectors
-                   thumb-web-connectors
-                   join-web-connectors
-                   key-walls
-                   thumb-walls
-                   join-walls
-                   screw-inserts)))
+;;;;;;;;;;;
+;; Model ;;
+;;;;;;;;;;;
+
+(def model-left
+  (union key-plates
+         thumb-plates
+         key-web-connectors
+         thumb-web-connectors
+         join-web-connectors
+         key-walls
+         thumb-walls
+         join-walls
+         screw-posts))
+(spit "things/left.scad" (write-scad model-left))
+
+;;;;;;;;;;;;;;;;
+;; Base Plate ;;
+;;;;;;;;;;;;;;;;
+
+(def base-plate-points
+  (let [key-firstcol 0
+        key-firstrow 0
+        key-lastcol (dec key-columns)
+        key-lastrow (dec key-rows)
+        thumb-firstcol 0
+        thumb-firstrow 0
+        thumb-lastcol (dec thumb-columns)
+        thumb-lastrow (dec thumb-rows)]
+    (concat
+     ; key front walls
+     ; skip first col (pinky corner)
+     ; skip last col (thumb cluster join)
+     (for [col (reverse (range 1 (- key-columns 2)))]
+       [((key-edges [col key-lastrow]) :right-front)
+        ((key-edges [col key-lastrow]) :left-front)])
+     ; key outer walls (left, at pinky keys)
+     ; skip last row (pinky corner)
+     (for [row (reverse (range 0 (- key-rows 1)))]
+       [((key-edges [key-firstcol row]) :left-front)
+        ((key-edges [key-firstcol row]) :left-back)])
+     ; key back walls
+     (for [col (range 0 key-columns)]
+       [((key-edges [col key-firstrow]) :left-back)
+        ((key-edges [col key-firstrow]) :right-back)])
+     ; key inner walls (right, at thumb cluster)
+     ; skip last two rows (thumb cluster join)
+     (for [row (range 0 (- key-rows 2))]
+       [((key-edges [key-lastcol row]) :right-back)
+        ((key-edges [key-lastcol row]) :right-front)])
+     ; thumb back walls
+     ; skip first col (thumb cluster join)
+     (for [col (range 1 thumb-columns)]
+       [((thumb-edges [col thumb-firstrow]) :left-back)
+        ((thumb-edges [col thumb-firstrow]) :right-back)])
+     ; thumb outer walls (right, away from keys)
+     (for [row (range 0 thumb-rows)]
+       [((thumb-edges [thumb-lastcol row]) :right-back)
+        ((thumb-edges [thumb-lastcol row]) :right-front)])
+     ; thumb front walls
+     (for [col (reverse (range 0 thumb-columns))]
+       [((thumb-edges [col thumb-lastrow]) :right-front)
+        ((thumb-edges [col thumb-lastrow]) :left-front)]))))
+
+(defn project-2d [edge] (let [p (edge :bottom)] [(p 0) (p 1)]))
+(def base-plate-fill (mapv project-2d (apply concat base-plate-points)))
+
+(def plate-left
+  (let [walls (cut (translate [0 0 (- z-fighting)]
+                              (union key-walls-filled
+                                     thumb-walls
+                                     join-walls)))
+        fill (polygon base-plate-fill)
+        plate (difference (union walls fill) screw-holes)]
+    plate))
+(spit "things/left-plate.scad" (write-scad plate-left))
