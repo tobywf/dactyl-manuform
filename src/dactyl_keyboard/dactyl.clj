@@ -718,6 +718,110 @@
    (construct-wall ((key-edges [(- key-columns 1) (- key-rows 2)]) :right-back) :right
                    ((thumb-edges [1 0]) :left-back) :back)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;
+;; USB Holder Cut-out ;;
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+(def holder-x-offset 2.0)
+(def holder-y-offset (- wall-thickness 2.0))
+
+; ---
+
+(defn usb-holder-translate [shape]
+  (let [edges (key-edges [(- key-columns 2) 0])
+        ; find mid-point (roughly)
+        pos-l ((edges :left-back) :bottom)
+        pos-r ((edges :right-back) :bottom)
+        pos (mapv (fn [a b] (/ (+ a b) 2)) pos-l pos-r)
+        pos [(+ (pos 0) holder-x-offset)
+             (+ (pos 1) holder-y-offset)
+             0.0]]
+    (translate pos shape)))
+
+(def key-walls
+  (difference (union key-walls
+                     (usb-holder-translate usb-holder-wall))
+              (usb-holder-translate usb-holder-slot)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Bottom Plate Screw Holes ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; --- main options
+
+; M3 screws are obviously 3.0mm, but the hot-melt insert will provide the
+; structure for the screws to grab onto. my inserts are quite skinny, so this
+; diameter is big enough to clear the screw threads and the insert, but small
+; enough to support the insert melting into the plastic
+(def screw-insert-inner (/ 3.5 2))
+; my hot-melt insert diameter is 4.6mm, so 8.0mm should be enough
+(def screw-insert-outer (/ 8.0 2))
+; maximum depth of the screw (without the bottom-plate thickness)
+(def screw-insert-depth 10.0)
+
+; ---
+
+(defn screw-place-shape [shape edge displace-pos]
+  (let [insert-pos (project-z (edge :bottom))
+        pos (mapv + insert-pos displace-pos)]
+    (translate pos shape)))
+
+(def screw-insert
+  (let [outer (cylinder 30 screw-insert-outer
+                           screw-insert-depth
+                           :center false)
+        inner (cylinder 30 screw-insert-inner
+                           (+ screw-insert-depth z-fighting)
+                           :center false)
+        inner (translate [0.0 0.0 (/ z-fighting -2)] inner)
+        cap-cut (cube (* screw-insert-outer 2)
+                      (* screw-insert-outer 2)
+                      (+ screw-insert-outer z-fighting))
+        cap (difference (sphere 30 screw-insert-outer)
+                        (translate [0.0 0.0 (/ screw-insert-outer -2)] cap-cut))
+        cap (translate [0.0 0.0 (- screw-insert-depth z-fighting)] cap)]
+    (union (difference outer inner) cap)))
+
+(def screw-cutout (with-fn 30 (circle screw-insert-inner)))
+
+(def screw-insert-place (partial screw-place-shape screw-insert))
+(def screw-cutout-place (partial screw-place-shape screw-cutout))
+
+(defn key-displace [dir0 dir1]
+  (let [offset (displace [0.0 0.0 0.0] dir0 (- screw-insert-inner))]
+    (if (nil? dir1) offset (displace offset dir1 (- screw-insert-inner)))))
+
+(defn thumb-displace [dir0 dir1]
+  (thumb-cluster-rotate (key-displace dir0 dir1)))
+
+(def screw-positions
+  [; keys back
+   [((key-edges [0 0]) :left-back) (key-displace :left :back)]
+   [((key-edges [(- key-columns 3) 0]) :left-back) (key-displace :left :back)]
+   [((key-edges [(- key-columns 1) 0]) :right-back) (key-displace :right :back)]
+   ; keys front
+   [((key-edges [0 (- key-rows 2)]) :left-front) (key-displace :left :front)]
+   [((key-edges [1 (- key-rows 1)]) :right-front) (key-displace :right :front)]
+   [((key-edges [(- key-columns 2) (- key-rows 1)]) :left-front) (key-displace :front nil)]
+   ; key inner/thumb back
+   [((key-edges [(- key-columns 1) (- key-rows 2)]) :right-back) (key-displace :right nil)]
+   ; thumbs
+   [((thumb-edges [(- thumb-columns 1) 0]) :right-back) (thumb-displace :right :back)]
+   [((thumb-edges [(- thumb-columns 1) (- thumb-rows 1)]) :right-front) (thumb-displace :right :front)]
+   [((thumb-edges [0 (- thumb-rows 1)]) :left-front) (thumb-displace :left :front)]])
+
+(def screw-inserts
+  (union (mapv (fn [args] (apply screw-insert-place args)) screw-positions)))
+
+; used to cut out from base plate
+(def screw-cutouts
+  (union (mapv (fn [args] (apply screw-cutout-place args)) screw-positions)))
+
+(spit "things/screw-tester.scad"
+      (write-scad (screw-insert-place {:bottom [0.0 0.0 0.0]} [0.0 0.0 0.0])))
+
 ; ---
 
 
